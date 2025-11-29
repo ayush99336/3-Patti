@@ -53,18 +53,24 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
   }
 }
 
 /* Custom styles */
-.game-table {
-  background: url("/table.png");
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
-  transform: perspective(800px) rotateX(30deg);
+/* Custom styles */
+/* .game-table styles removed - handled in GameRoom.jsx */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .card {
@@ -80,9 +86,12 @@
 }
 
 @keyframes chipPulse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
   }
+
   50% {
     transform: scale(1.05);
   }
@@ -102,9 +111,12 @@
 }
 
 @keyframes turnPulse {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 20px rgba(59, 130, 246, 0.6);
   }
+
   50% {
     box-shadow: 0 0 30px rgba(59, 130, 246, 1);
   }
@@ -115,9 +127,11 @@
   0% {
     left: -100px;
   }
+
   60% {
     left: 100%;
   }
+
   100% {
     left: 100%;
   }

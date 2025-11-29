@@ -1,39 +1,56 @@
 import React from 'react';
-import { cn, getCardSymbol, getCardColor } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 
 export default function PlayingCard({ rank, suit, faceDown = false, className }) {
   if (faceDown) {
     return (
       <div className={cn(
-        'card relative w-16 h-24 rounded-lg border-2 border-gray-700 bg-gradient-to-br from-blue-900 to-blue-700 shadow-lg',
-        'flex items-center justify-center',
+        'card relative w-14 h-20 md:w-16 md:h-24 rounded-lg shadow-xl overflow-hidden',
         className
       )}>
-        <div className="text-white text-base font-bold opacity-30">
-          ♠♥♣♦
-        </div>
+        <img
+          src="/cards/back_of_card.jpg"
+          alt="Card Back"
+          className="w-full h-full object-cover"
+        />
       </div>
     );
   }
 
-  const symbol = getCardSymbol(suit);
-  const colorClass = getCardColor(suit);
+  // Map suit symbols/names to filenames if necessary
+  // Assuming filenames are like "2h.jpg", "kc.jpg" etc.
+  // rank: 2, 3, ..., 10, J, Q, K, A
+  // suit: spades, hearts, diamonds, clubs (or symbols)
+
+  // Helper to convert rank/suit to filename format
+  const getCardFilename = (r, s) => {
+    if (!r || !s) return 'back_of_card.jpg';
+
+    const rankMap = { '10': '10', 'J': 'j', 'Q': 'q', 'K': 'k', 'A': 'a' };
+    const suitMap = { 'spades': 's', 'hearts': 'h', 'diamonds': 'd', 'clubs': 'c', '♠': 's', '♥': 'h', '♦': 'd', '♣': 'c' };
+
+    const rankCode = rankMap[r] || r.toString().toLowerCase();
+    const suitCode = suitMap[s.toLowerCase()] || s.charAt(0).toLowerCase();
+
+    return `${rankCode}${suitCode}.jpg`;
+  };
+
+  const filename = getCardFilename(rank, suit);
 
   return (
     <div className={cn(
-      'card relative w-16 h-24 rounded-lg border-2 border-gray-300 bg-white shadow-lg',
-      'flex flex-col items-center justify-between p-2',
+      'card relative w-14 h-20 md:w-16 md:h-24 rounded-lg shadow-xl overflow-hidden bg-white',
       className
     )}>
-      <div className={cn('text-lg font-bold', colorClass)}>
-        {rank}
-      </div>
-      <div className={cn('text-3xl', colorClass)}>
-        {symbol}
-      </div>
-      <div className={cn('text-lg font-bold', colorClass)}>
-        {rank}
-      </div>
+      <img
+        src={`/cards/${filename}`}
+        alt={`${rank} of ${suit}`}
+        className="w-full h-full object-contain"
+        onError={(e) => {
+          e.target.onerror = null;
+          e.target.src = '/cards/back_of_card.jpg'; // Fallback
+        }}
+      />
     </div>
   );
 }

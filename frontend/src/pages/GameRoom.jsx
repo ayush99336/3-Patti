@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import gsap from "gsap";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { useReadContract } from "wagmi";
 import {
@@ -184,6 +185,151 @@ export default function GameRoom({ socket }) {
       socket.off("error");
     };
   }, [socket, playerId, navigate]);
+
+  // GSAP Animations
+  useEffect(() => {
+    if (gameState?.gameStarted && !startingGame) {
+      // Animate dealing cards
+      // We can trigger this when gameStarted becomes true
+      // But we need to be careful not to re-animate on every render
+      // Ideally, we'd have a specific event or state transition
+    }
+  }, [gameState?.gameStarted]);
+
+  // Listen for specific socket events for animations
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleGameStartedAnim = () => {
+      // Shuffle Animation first
+      const dealer = document.getElementById('dealer-hand-position'); // New anchor point
+      if (!dealer) return;
+
+      const dealerRect = dealer.getBoundingClientRect();
+
+      // Create a temporary shuffling deck
+      const shuffleCards = [];
+      for (let i = 0; i < 5; i++) {
+        const card = document.createElement('div');
+        card.className = 'absolute w-16 h-24 bg-blue-900 border border-white rounded shadow-xl';
+        card.style.backgroundImage = 'url("/cards/back_of_card.jpg")';
+        card.style.backgroundSize = 'cover';
+        card.style.left = `${dealerRect.left}px`;
+        card.style.top = `${dealerRect.top}px`;
+        document.body.appendChild(card);
+        shuffleCards.push(card);
+      }
+
+      // Animate shuffling
+      const tl = gsap.timeline({
+        onComplete: () => {
+          shuffleCards.forEach(c => c.remove());
+          startDealing(); // Proceed to deal
+        }
+      });
+
+      shuffleCards.forEach((card, i) => {
+        tl.to(card, {
+          x: (Math.random() - 0.5) * 40,
+          y: (Math.random() - 0.5) * 10,
+          rotation: (Math.random() - 0.5) * 15,
+          duration: 0.1,
+          yoyo: true,
+          repeat: 3,
+          ease: "power1.inOut"
+        }, 0);
+      });
+    };
+
+    const startDealing = () => {
+      // Animate cards from DEALER to players
+      const dealer = document.getElementById('dealer-hand-position');
+      if (!dealer) return;
+
+      const dealerRect = dealer.getBoundingClientRect();
+
+      gameState?.players.forEach((player, index) => {
+        const seat = document.getElementById(`player-seat-${index}`);
+        if (!seat) return;
+
+        const seatRect = seat.getBoundingClientRect();
+
+        // Create flying card
+        const card = document.createElement('div');
+        card.className = 'fixed w-10 h-14 bg-blue-900 border border-white rounded z-50 shadow-xl';
+        card.style.left = `${dealerRect.left}px`;
+        card.style.top = `${dealerRect.top}px`;
+
+        const img = document.createElement('img');
+        img.src = '/cards/back_of_card.jpg';
+        img.className = 'w-full h-full object-cover rounded';
+        card.appendChild(img);
+
+        document.body.appendChild(card);
+
+        gsap.to(card, {
+          left: seatRect.left + seatRect.width / 2 - 20,
+          top: seatRect.top + seatRect.height / 2 - 30,
+          rotation: 360 * 2,
+          scale: 0.8,
+          duration: 0.6,
+          delay: index * 0.2,
+          ease: "power2.out",
+          onComplete: () => {
+            card.remove();
+            gsap.fromTo(seat, { scale: 1.1 }, { scale: 1, duration: 0.2 });
+          }
+        });
+      });
+    };
+
+    const handleActionAnim = ({ playerId: actorId, action, amount }) => {
+      if (action === 'bet' || action === 'chaal') {
+        const playerIndex = gameState?.players.findIndex(p => p.id === actorId);
+        if (playerIndex === -1) return;
+
+        const seat = document.getElementById(`player-seat-${playerIndex}`);
+        if (!seat) return;
+
+        const seatRect = seat.getBoundingClientRect();
+
+        // Get the chips-group element position
+        const chipsGroup = document.getElementById('chips-group-pot');
+        const targetRect = chipsGroup ? chipsGroup.getBoundingClientRect() : null;
+
+        // Fallback to window center if chips-group not found
+        const targetX = targetRect ? targetRect.left + targetRect.width / 2 : window.innerWidth / 2;
+        const targetY = targetRect ? targetRect.top + targetRect.height / 2 : window.innerHeight / 2;
+
+        // Use CHIP image
+        const chip = document.createElement('img');
+        chip.src = '/chip.png';
+        chip.className = 'fixed w-8 h-8 z-50 drop-shadow-md';
+        chip.style.left = `${seatRect.left + seatRect.width / 2}px`;
+        chip.style.top = `${seatRect.top + seatRect.height / 2}px`;
+        document.body.appendChild(chip);
+
+        gsap.to(chip, {
+          left: targetX,
+          top: targetY,
+          rotation: 720,
+          duration: 0.6,
+          ease: "power2.inOut",
+          onComplete: () => {
+            chip.remove();
+          }
+        });
+      }
+    };
+
+    socket.on("gameStarted", handleGameStartedAnim);
+    socket.on("actionPerformed", handleActionAnim);
+
+    return () => {
+      socket.off("gameStarted", handleGameStartedAnim);
+      socket.off("actionPerformed", handleActionAnim);
+    };
+  }, [socket, gameState]);
 
   const handleCopyRoomId = () => {
     navigator.clipboard.writeText(roomId);
@@ -413,492 +559,352 @@ export default function GameRoom({ socket }) {
   };
 
   return (
-    <div className="min-h-screen bg-[url('/background.jpg')] bg-cover bg-center">
-      {/* Header */}
-      <div className="max-w-7xl mx-auto mb-4">
-        <div className="flex items-center justify-between bg-black/30 backdrop-blur-sm rounded-lg p-4">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleLeaveRoom}
-              className="text-white hover:bg-white/10"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-white text-xl font-bold">
-                  Room: {roomId.slice(0, 10)}...
-                </h2>
-                {isCreator && (
-                  <span className="px-2 py-0.5 bg-yellow-500/20 border border-yellow-500/50 rounded text-yellow-400 text-xs font-semibold">
-                    👑 Creator
-                  </span>
-                )}
-              </div>
-              {blockchainRoomDetails ? (
-                <div className="text-gray-300 text-sm space-y-1">
-                  <p className="flex items-center gap-2">
-                    <Users className="w-4 h-4" />
-                    {Number(roomCurrentPlayers)} / {Number(roomMaxPlayers)}{" "}
-                    players on-chain
-                  </p>
-                  <p className="flex items-center gap-2">
-                    <Coins className="w-4 h-4 text-yellow-400" />
-                    Buy-in:{" "}
-                    {roomBuyIn
-                      ? (Number(roomBuyIn) / 1e18).toFixed(0)
-                      : "0"}{" "}
-                    TPT
-                  </p>
-                  <p
-                    className={`text-xs ${
-                      Number(roomState) === 0
-                        ? "text-yellow-400"
-                        : "text-green-400"
-                    }`}
-                  >
-                    {Number(roomState) === 0
-                      ? "⏳ Waiting"
-                      : Number(roomState) === 1
-                      ? "🎮 Active"
-                      : Number(roomState) === 2
-                      ? "✅ Finished"
-                      : "❌ Cancelled"}
-                  </p>
+    <div className="min-h-screen bg-[url('/background.jpg')] bg-cover bg-center pt-16">
+      {/* Header - Sophisticated Design */}
+      <div className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-black/60 via-black/40 to-transparent backdrop-blur-md border-b border-white/5">
+        <div className="max-w-7xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            {/* Left Section */}
+            <div className="flex items-center gap-4">
+              <button
+                onClick={handleLeaveRoom}
+                className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+              >
+                <ArrowLeft className="w-5 h-5 text-white" />
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-px bg-gradient-to-b from-transparent via-white/20 to-transparent"></div>
+
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-white text-sm font-bold tracking-wide">
+                      {roomId.slice(0, 8)}...
+                    </h2>
+                    {isCreator && (
+                      <span className="px-2 py-0.5 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/30 rounded-full text-yellow-400 text-[10px] font-bold tracking-wider flex items-center gap-1">
+                        <span className="text-xs">👑</span> HOST
+                      </span>
+                    )}
+                  </div>
+
+                  {blockchainRoomDetails && (
+                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                      <span className="flex items-center gap-1">
+                        <Users className="w-3 h-3" />
+                        {Number(roomCurrentPlayers)}/{Number(roomMaxPlayers)}
+                      </span>
+                      <span className="w-1 h-1 rounded-full bg-gray-600"></span>
+                      <span className="flex items-center gap-1">
+                        <Coins className="w-3 h-3 text-yellow-500" />
+                        {roomBuyIn ? (Number(roomBuyIn) / 1e18).toFixed(0) : "0"} TPT
+                      </span>
+                      <span className="w-1 h-1 rounded-full bg-gray-600"></span>
+                      <span className={`${Number(roomState) === 0 ? "text-yellow-400" : "text-green-400"}`}>
+                        {Number(roomState) === 0 ? "⏳ Waiting" : Number(roomState) === 1 ? "🎮 Active" : Number(roomState) === 2 ? "✅ Finished" : "❌ Cancelled"}
+                      </span>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <p className="text-gray-300 text-sm">
-                  Loading blockchain data...
-                </p>
+              </div>
+            </div>
+
+            {/* Right Section */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCopyRoomId}
+                className="h-9 px-4 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-medium transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Copy ID</span>
+              </button>
+
+              {canStartGame && (
+                <button
+                  onClick={handleStartGame}
+                  disabled={startingGame}
+                  className="h-9 px-5 rounded-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 border border-green-400/30 text-white text-xs font-bold tracking-wide transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg shadow-green-500/20"
+                >
+                  {startingGame ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Starting...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3.5 h-3.5" />
+                      Start Game
+                    </>
+                  )}
+                </button>
               )}
             </div>
           </div>
+        </div>
+      </div>
 
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCopyRoomId}
-              className="bg-white/10 text-white border-white/20 hover:bg-white/20"
-            >
-              <Copy className="w-4 h-4 mr-2" />
-              Copy Room ID
-            </Button>
+      {/* Message Banner - Sophisticated Floating Notification */}
+      {message && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[60] animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="bg-black/80 backdrop-blur-xl border border-yellow-500/30 text-yellow-100 px-8 py-3 rounded-full shadow-[0_0_30px_rgba(234,179,8,0.2)] flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></div>
+            <span className="font-medium tracking-wide text-sm md:text-base">{message}</span>
+            <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></div>
+          </div>
+        </div>
+      )}
+      {/* ... (Header) ... */}
 
-            {canStartGame && (
-              <Button
-                onClick={handleStartGame}
-                disabled={startingGame}
-                size="sm"
-                className="bg-green-600 hover:bg-green-700"
-              >
-                {startingGame ? (
+      {/* Game Table Container */}
+      <div className="relative w-full h-[calc(100vh-64px)] flex items-center justify-center overflow-hidden perspective-[1000px]">
+
+        {/* Dealer Girl */}
+        <div className="absolute top-[-2%] left-1/2 -translate-x-1/2 z-0 w-40 h-40 md:w-56 md:h-56 pointer-events-none transition-all duration-500 z-50">
+          <img
+            src="/dealer.png"
+            alt="Dealer"
+            className="w-full h-full object-contain drop-shadow-2xl"
+          />
+          {/* Dealer Hand Position Anchor */}
+          <div id="dealer-hand-position" className="absolute bottom-8 left-1/2 -translate-x-1/2 w-1 h-1"></div>
+        </div>
+
+        {/* Table Surface - Slightly Reduced Size */}
+        <div className="relative w-[85vw] max-w-[1000px] aspect-[1.8/1] transform-style-3d rotate-x-[20deg] transition-transform duration-500 z-10">
+          <img
+            src="/table.jpg"
+            alt="Poker Table"
+            className="absolute inset-0 w-full h-full object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
+          />
+
+          {/* Pot in Center - Chips Group Image */}
+          <div className="absolute top-[51%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2">
+            {/* Chips Group Image - Centered */}
+            <div id="chips-group-pot" className="relative w-32 h-24">
+              <img src="/chips-group.png" alt="Pot Chips" className="w-full h-full object-contain drop-shadow-xl" />
+            </div>
+
+            {/* POT Text Below */}
+            <div className="bg-black/70 backdrop-blur-sm rounded-full px-4 py-1 border border-yellow-500/30">
+              <div className="text-yellow-100 font-bold text-lg shadow-black drop-shadow-md">
+                POT: {formatChips(gameState.pot)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Players Overlay */}
+        <div className="absolute inset-0 pointer-events-none z-30">
+          {gameState.players.map((player, index) => {
+            const position = getPlayerPosition(
+              index,
+              gameState.players.length
+            );
+            const isCurrentTurn =
+              gameState.gameStarted && gameState.currentPlayerIndex === index;
+            const isDealer = gameState.dealerIndex === index;
+
+            // REFINED POSITIONING LOGIC
+            let style = {};
+
+            // Hero (Bottom Center)
+            if (index === 0) style = { bottom: '2%', left: '50%', transform: 'translateX(-50%)' };
+
+            // Opponent Logic for 2 Players: Place at Top Right or Top Left, NOT beside
+            else if (gameState.players.length === 2) {
+              style = { top: '15%', right: '20%' }; // Top Right for 1v1
+            }
+            // Standard 6-max Logic
+            else {
+              if (index === 1) style = { bottom: '20%', left: '10%' };
+              else if (index === 2) style = { top: '20%', left: '15%' };
+              else if (index === 3) style = { top: '10%', left: '50%', transform: 'translateX(-50%)' }; // Top Center (if 6 players, might overlap dealer slightly but okay)
+              else if (index === 4) style = { top: '20%', right: '15%' };
+              else if (index === 5) style = { bottom: '20%', right: '10%' };
+            }
+
+            const playerCards = player.id === playerId ? myCards : [];
+            const shouldShowCards = player.id === playerId && showCards;
+
+            return (
+              <div key={player.id} className="absolute pointer-events-auto" style={style} id={`player-seat-${index}`}>
+                <PlayerSeat
+                  player={player}
+                  isCurrentPlayer={isCurrentTurn}
+                  isDealer={isDealer}
+                  cards={playerCards}
+                  showCards={shouldShowCards}
+                  position={position}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Sophisticated Action Panel */}
+      {gameState.gameStarted && currentPlayer && !currentPlayer.isFolded && (
+        <div className="absolute bottom-8 right-8 flex flex-col items-end gap-4 z-50">
+
+          {/* Info Card */}
+          <div className="bg-gradient-to-br from-gray-900/90 to-black/90 backdrop-blur-xl rounded-2xl p-5 border border-white/10 shadow-2xl min-w-[200px]">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-gray-400 text-xs font-bold tracking-widest uppercase">Your Stack</span>
+              <span className="text-yellow-400 font-bold text-xl font-mono">{formatChips(currentPlayer.chips)}</span>
+            </div>
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-white/20 to-transparent my-2"></div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-400 text-xs font-bold tracking-widest uppercase">Table Bet</span>
+              <span className="text-blue-400 font-bold text-lg font-mono">{formatChips(gameState.currentBet)}</span>
+            </div>
+          </div>
+
+          {/* Controls Container */}
+          <div className="flex flex-col gap-3 items-end">
+
+            {/* Primary Actions Row */}
+            <div className="flex gap-3">
+              {isMyTurn && showCards && gameState?.players.filter((p) => !p.isFolded).length >= 2 && (
+                <button onClick={handleShow} className="h-12 px-6 rounded-full bg-yellow-600 hover:bg-yellow-500 text-white font-bold shadow-lg border border-yellow-400 transition-all hover:scale-105 active:scale-95 flex items-center gap-2">
+                  <Eye size={18} /> SHOW
+                </button>
+              )}
+
+              {isMyTurn && (
+                <button onClick={handleFold} className="h-12 px-6 rounded-full bg-red-600 hover:bg-red-500 text-white font-bold shadow-lg border border-red-400 transition-all hover:scale-105 active:scale-95 flex items-center gap-2">
+                  <X size={18} /> FOLD
+                </button>
+              )}
+            </div>
+
+            {/* Betting Interface */}
+            {isMyTurn && !showBetInput && (
+              <div className="bg-black/60 backdrop-blur-md rounded-2xl p-3 border border-white/5 flex flex-col gap-3 items-end">
+
+                {/* Amount Selector */}
+                <div className="flex gap-2 bg-black/40 p-1 rounded-xl">
+                  {[
+                    { label: 'MIN', val: minBet, color: 'green' },
+                    { label: 'MID', val: Math.floor((minBet + maxBet) / 2), color: 'blue' },
+                    { label: 'MAX', val: maxBet, color: 'red' }
+                  ].map((opt) => (
+                    <button
+                      key={opt.label}
+                      onClick={() => setSelectedBetAmount(opt.val)}
+                      className={`
+                                      w-14 h-10 rounded-lg flex flex-col items-center justify-center transition-all
+                                      ${selectedBetAmount === opt.val
+                          ? `bg-${opt.color}-600 text-white shadow-lg scale-105 ring-2 ring-${opt.color}-400`
+                          : `bg-gray-800 text-gray-400 hover:bg-gray-700`}
+                                  `}
+                    >
+                      <span className="text-[10px] font-bold">{opt.label}</span>
+                      <span className="text-[10px]">{formatChips(opt.val)}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Big Action Button */}
+                <button
+                  onClick={() => handleBet(selectedBetAmount || minBet)}
+                  className="w-full h-14 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 rounded-xl shadow-lg border-t border-green-400 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  <span className="text-white font-black text-xl tracking-wider">CHAAL</span>
+                  <div className="bg-black/20 px-2 py-1 rounded text-sm font-mono text-green-100">
+                    {formatChips(selectedBetAmount || minBet)}
+                  </div>
+                </button>
+              </div>
+            )}
+
+            {/* Blind See Cards */}
+            {!showCards && currentPlayer.isBlind && (
+              <button onClick={handleSeeCards} className="h-12 px-8 rounded-full bg-purple-600 hover:bg-purple-500 text-white font-bold shadow-lg border border-purple-400 transition-all hover:scale-105 active:scale-95 flex items-center gap-2">
+                <Eye size={18} /> SEE CARDS
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!isMyTurn && (
+        <div className="text-center text-gray-300 mt-4">
+          Waiting for other players...
+        </div>
+      )}
+
+
+      {/* Waiting for Game to Start */}
+      {
+        !gameState.gameStarted && (
+          <div className="max-w-7xl mx-auto mt-4">
+            <div className="bg-black/30 backdrop-blur-sm rounded-lg p-6 text-center">
+              <Users className="w-12 h-12 text-white mx-auto mb-4" />
+              <h3 className="text-white text-xl font-semibold mb-2">
+                Waiting for players...
+              </h3>
+              <p className="text-gray-300">
+                {gameState.players.length >= 2
+                  ? 'Ready to start! Click "Start Game" to begin.'
+                  : "Need at least 2 players to start the game."}
+              </p>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Game Ended Overlay */}
+      {
+        gameEnded && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="bg-gradient-to-br from-yellow-600 to-orange-600 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl border-4 border-yellow-400">
+              <div className="text-center">
+                <Trophy className="w-24 h-24 text-white mx-auto mb-4 animate-bounce" />
+
+                {winnerInfo ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Starting...
+                    <h2 className="text-white text-4xl font-bold mb-2">
+                      🎉 Winner! 🎉
+                    </h2>
+                    <p className="text-yellow-100 text-2xl font-semibold mb-2">
+                      {winnerInfo.name}
+                    </p>
+                    <div className="bg-white/20 rounded-lg p-4 mb-4">
+                      <p className="text-white text-sm mb-1">Prize Money</p>
+                      <p className="text-yellow-200 text-3xl font-bold">
+                        {formatChips(winnerInfo.pot)}
+                      </p>
+                    </div>
+                    {winnerInfo.reason && (
+                      <p className="text-yellow-100 text-sm mb-4">
+                        {winnerInfo.reason}
+                      </p>
+                    )}
                   </>
                 ) : (
                   <>
-                    <Play className="w-4 h-4 mr-2" />
-                    Start Game
+                    <h2 className="text-white text-3xl font-bold mb-4">
+                      Game Ended
+                    </h2>
+                    <p className="text-yellow-100 mb-4">
+                      The game has concluded.
+                    </p>
                   </>
                 )}
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
 
-      {/* Message Banner */}
-      {message && (
-        <div className="max-w-7xl mx-auto mb-4">
-          <div className="bg-blue-600 text-white px-4 py-3 rounded-lg text-center font-semibold">
-            {message}
-          </div>
-        </div>
-      )}
-
-      {/* Game Table */}
-      <div className="max-w-4xl mx-auto">
-        <div className="game-table relative rounded-3xl p-8 min-h-[550px] flex items-center justify-center">
-          {/* Pot in Center */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
-            <div className="bg-gradient-to-br from-yellow-600 to-yellow-800 rounded-full p-6 shadow-2xl border-4 border-yellow-400">
-              <div className="text-center">
-                <Coins className="w-8 h-8 text-white mx-auto mb-2" />
-                <div className="text-white text-sm font-semibold">POT</div>
-                <div className="text-yellow-200 text-2xl font-bold">
-                  {formatChips(gameState.pot)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Players */}
-          <div className="absolute inset-0 p-8">
-            {gameState.players.map((player, index) => {
-              const position = getPlayerPosition(
-                index,
-                gameState.players.length
-              );
-              const isCurrentTurn =
-                gameState.gameStarted && gameState.currentPlayerIndex === index;
-              const isDealer = gameState.dealerIndex === index;
-
-              let positionClass = "";
-              if (position === "bottom") {
-                positionClass = "bottom-4 left-1/2 -translate-x-1/2";
-              } else if (position === "top") {
-                positionClass =
-                  index === 1 && gameState.players.length === 3
-                    ? "top-4 left-1/4 -translate-x-1/2"
-                    : index === 2 && gameState.players.length === 3
-                    ? "top-4 right-1/4 translate-x-1/2"
-                    : index === 2 && gameState.players.length === 5
-                    ? "top-4 left-1/3 -translate-x-1/2"
-                    : index === 3 && gameState.players.length === 5
-                    ? "top-4 right-1/3 translate-x-1/2"
-                    : "top-4 left-1/2 -translate-x-1/2";
-              } else if (position === "left") {
-                positionClass =
-                  index === 1 && gameState.players.length === 5
-                    ? "left-4 top-1/3 -translate-y-1/2"
-                    : index === 1 && gameState.players.length === 6
-                    ? "left-4 top-1/4 -translate-y-1/2"
-                    : index === 2 && gameState.players.length === 6
-                    ? "left-4 top-2/3 -translate-y-1/2"
-                    : "left-4 top-1/2 -translate-y-1/2";
-              } else if (position === "right") {
-                positionClass =
-                  index === 4 && gameState.players.length === 5
-                    ? "right-4 top-1/3 -translate-y-1/2"
-                    : index === 4 && gameState.players.length === 6
-                    ? "right-4 top-1/4 -translate-y-1/2"
-                    : index === 5 && gameState.players.length === 6
-                    ? "right-4 top-2/3 -translate-y-1/2"
-                    : "right-4 top-1/2 -translate-y-1/2";
-              }
-
-              const playerCards = player.id === playerId ? myCards : [];
-              const shouldShowCards = player.id === playerId && showCards;
-
-              return (
-                <div key={player.id} className={`absolute ${positionClass}`}>
-                  <PlayerSeat
-                    player={player}
-                    isCurrentPlayer={isCurrentTurn}
-                    isDealer={isDealer}
-                    cards={playerCards}
-                    showCards={shouldShowCards}
-                    position={position}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Action Panel */}
-      {gameState.gameStarted && currentPlayer && !currentPlayer.isFolded && (
-        <div className="max-w-7xl mx-auto mt-4">
-          <div className="bg-black/30 rounded-[20px] -mb-5 backdrop-blur-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-white">
-                <div className="text-2xl font-bold text-yellow-400">
-                  {formatChips(currentPlayer.chips)}
-                </div>
-                <div className="text-sm text-gray-300">Your Chips</div>
-              </div>
-              <div className="text-white">
-                <div className="text-2xl font-bold text-blue-400">
-                  {formatChips(gameState.currentBet)}
-                </div>
-                <div className="text-sm text-gray-300">Current Bet</div>
-              </div>
-            </div>
-          </div>
-          <div className="bg-[#1b191a] rounded-[20px] backdrop-blur-sm p-6">
-            <div className="flex flex-wrap gap-3">
-              {/* See Cards Button */}
-
-              {/* Show Button - Only if player has seen cards and 2+ players remain */}
-              {isMyTurn &&
-                showCards &&
-                gameState?.players.filter((p) => !p.isFolded).length >= 2 && (
-                  <Button
-                    onClick={handleShow}
-                    className="bg-[yellow-600] hover:bg-yellow-700"
-                  >
-                    <Eye className="w-4 h-4 mr-2" />
-                    Show
-                  </Button>
-                )}
-
-              {/* Fold Button */}
-              {isMyTurn && (
                 <Button
-                  onClick={handleFold}
-                  variant="destructive"
-                  className="bg-red-600 hover:bg-red-700"
+                  onClick={() => navigate("/")}
+                  size="lg"
+                  className="w-full bg-white text-orange-600 hover:bg-gray-100 font-bold text-lg"
                 >
-                  <X className="w-4 h-4 mr-2" />
-                  Fold / Pack
+                  <ArrowLeft className="w-5 h-5 mr-2" />
+                  Exit to Home
                 </Button>
-              )}
-
-              {/* Bet Button */}
-              {/* {isMyTurn && (
-                <>
-                  {!showBetInput ? (
-                    <Button
-                      onClick={() => setShowBetInput(true)}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      <DollarSign className="w-4 h-4 mr-2" />
-                      Chaal / Bet
-                    </Button>
-                  ) : (
-                    <div className="flex items-center gap-2 flex-1">
-                      <input
-                        type="number"
-                        min={minBet}
-                        max={maxBet}
-                        value={betAmount}
-                        onChange={(e) => setBetAmount(Number(e.target.value))}
-                        placeholder={`Min: ${minBet}, Max: ${maxBet}`}
-                        className="flex-1 px-4 py-2 rounded-md bg-white/10 text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-green-500"
-                      />
-                      <Button
-                        onClick={handleBet}
-                        className="bg-green-600 hover:bg-green-700"
-                      >
-                        Bet
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          setShowBetInput(false);
-                          setBetAmount(0);
-                        }}
-                        variant="ghost"
-                        className="text-white hover:bg-white/10"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  )}
-                </>
-              )} */}
-
-              {/* Chip-based Betting Interface */}
-              {isMyTurn && !showBetInput && (
-                <div className="flex gap-4 w-full">
-                  {/* Bet Type Label */}
-                  {/* <div className="text-center">
-                    <span className="text-white text-lg font-semibold px-4 py-2 bg-white/10 rounded-lg border border-white/20">
-                      {currentPlayer.isBlind ? '🎲 Blind Bet' : '👁️ Chaal'}
-                    </span>
-                  </div> */}
-
-                  {/* Amount Display Box */}
-                  <div className="bg-[#353234] backdrop-blur-sm rounded-xl p-2 px-6 shadow-lg">
-                    <div className="text-center">
-                      <p className="text-white text-xl font-bold tracking-wider">
-                        {selectedBetAmount !== null
-                          ? formatChips(selectedBetAmount)
-                          : "---"}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Chip Buttons */}
-                  <div className="flex justify-center gap-4">
-                    {/* Min Chip */}
-                    <button
-                      onClick={() => setSelectedBetAmount(minBet)}
-                      className={`group relative transition-all duration-200 ${
-                        selectedBetAmount === minBet
-                          ? "scale-110 -translate-y-2"
-                          : "hover:scale-105 hover:-translate-y-1"
-                      }`}
-                    >
-                      <div
-                        className={`w-20 h-10 rounded-full flex gap-2 items-center justify-center shadow-xl transition-all ${
-                          selectedBetAmount === minBet
-                            ? "bg-gradient-to-br from-green-400 to-green-600 ring-4 ring-green-300"
-                            : "bg-gradient-to-br from-green-500 to-green-700 hover:from-green-400 hover:to-green-600"
-                        }`}
-                      >
-                        <span className="text-white text-xs font-bold">
-                          MIN
-                        </span>
-                        <span className="text-white text-sm font-semibold">
-                          {formatChips(minBet)}
-                        </span>
-                      </div>
-                    </button>
-
-                    {/* Mid Chip */}
-                    <button
-                      onClick={() =>
-                        setSelectedBetAmount(Math.floor((minBet + maxBet) / 2))
-                      }
-                      className={`group relative transition-all duration-200 ${
-                        selectedBetAmount === Math.floor((minBet + maxBet) / 2)
-                          ? "scale-110 -translate-y-2"
-                          : "hover:scale-105 hover:-translate-y-1"
-                      }`}
-                    >
-                      <div
-                        className={`w-20 h-10 rounded-full flex gap-2 items-center justify-center shadow-xl transition-all ${
-                          selectedBetAmount ===
-                          Math.floor((minBet + maxBet) / 2)
-                            ? "bg-gradient-to-br from-blue-400 to-blue-600 ring-4 ring-blue-300"
-                            : "bg-gradient-to-br from-blue-500 to-blue-700 hover:from-blue-400 hover:to-blue-600"
-                        }`}
-                      >
-                        <span className="text-white text-xs font-bold">
-                          MID
-                        </span>
-                        <span className="text-white text-sm font-semibold">
-                          {formatChips(Math.floor((minBet + maxBet) / 2))}
-                        </span>
-                      </div>
-                    </button>
-
-                    {/* Max Chip */}
-                    <button
-                      onClick={() => setSelectedBetAmount(maxBet)}
-                      className={`group relative transition-all duration-200 ${
-                        selectedBetAmount === maxBet
-                          ? "scale-110 -translate-y-2"
-                          : "hover:scale-105 hover:-translate-y-1"
-                      }`}
-                    >
-                      <div
-                        className={`w-20 h-10 rounded-full flex gap-2 items-center justify-center shadow-xl transition-all ${
-                          selectedBetAmount === maxBet
-                            ? "bg-gradient-to-br from-red-400 to-red-600 ring-4 ring-red-300"
-                            : "bg-gradient-to-br from-red-500 to-red-700 hover:from-red-400 hover:to-red-600"
-                        }`}
-                      >
-                        <span className="text-white text-xs font-bold">
-                          MAX
-                        </span>
-                        <span className="text-white text-sm font-semibold">
-                          {formatChips(maxBet)}
-                        </span>
-                      </div>
-                    </button>
-                  </div>
-
-                  {/* Confirm Button */}
-                  {selectedBetAmount !== null && (
-                    <Button
-                      onClick={() => {
-                        handleBet(selectedBetAmount);
-                        setSelectedBetAmount(null);
-                      }}
-                      className="bg-gradient-to-r border-none from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-bold py-1 shadow-lg"
-                    >
-                      <DollarSign className="w-5 h-5 mr-2" />
-                      Confirm {currentPlayer.isBlind ? "Blind" : "Chaal"} -{" "}
-                      {formatChips(selectedBetAmount)}
-                    </Button>
-                  )}
-
-                  {!showCards && currentPlayer.isBlind && (
-                    <Button
-                      onClick={handleSeeCards}
-                      variant="outline"
-                      className="bg-blue-600 hover:bg-blue-700 text-white border-0"
-                    >
-                      <Eye className="w-4 h-4 mr-2" />
-                      See Cards
-                    </Button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {!isMyTurn && (
-              <div className="text-center text-gray-300 mt-4">
-                Waiting for other players...
               </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Waiting for Game to Start */}
-      {!gameState.gameStarted && (
-        <div className="max-w-7xl mx-auto mt-4">
-          <div className="bg-black/30 backdrop-blur-sm rounded-lg p-6 text-center">
-            <Users className="w-12 h-12 text-white mx-auto mb-4" />
-            <h3 className="text-white text-xl font-semibold mb-2">
-              Waiting for players...
-            </h3>
-            <p className="text-gray-300">
-              {gameState.players.length >= 2
-                ? 'Ready to start! Click "Start Game" to begin.'
-                : "Need at least 2 players to start the game."}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Game Ended Overlay */}
-      {gameEnded && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-gradient-to-br from-yellow-600 to-orange-600 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl border-4 border-yellow-400">
-            <div className="text-center">
-              <Trophy className="w-24 h-24 text-white mx-auto mb-4 animate-bounce" />
-
-              {winnerInfo ? (
-                <>
-                  <h2 className="text-white text-4xl font-bold mb-2">
-                    🎉 Winner! 🎉
-                  </h2>
-                  <p className="text-yellow-100 text-2xl font-semibold mb-2">
-                    {winnerInfo.name}
-                  </p>
-                  <div className="bg-white/20 rounded-lg p-4 mb-4">
-                    <p className="text-white text-sm mb-1">Prize Money</p>
-                    <p className="text-yellow-200 text-3xl font-bold">
-                      {formatChips(winnerInfo.pot)}
-                    </p>
-                  </div>
-                  {winnerInfo.reason && (
-                    <p className="text-yellow-100 text-sm mb-4">
-                      {winnerInfo.reason}
-                    </p>
-                  )}
-                </>
-              ) : (
-                <>
-                  <h2 className="text-white text-3xl font-bold mb-4">
-                    Game Ended
-                  </h2>
-                  <p className="text-yellow-100 mb-4">
-                    The game has concluded.
-                  </p>
-                </>
-              )}
-
-              <Button
-                onClick={() => navigate("/")}
-                size="lg"
-                className="w-full bg-white text-orange-600 hover:bg-gray-100 font-bold text-lg"
-              >
-                <ArrowLeft className="w-5 h-5 mr-2" />
-                Exit to Home
-              </Button>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 }
