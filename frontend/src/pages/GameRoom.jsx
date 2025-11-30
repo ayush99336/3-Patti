@@ -76,6 +76,11 @@ export default function GameRoom({ socket }) {
     }
   }, [blockchainRoomDetails]);
 
+  // Update ref on every render
+  useEffect(() => {
+    handleDeclareWinnerRef.current = handleDeclareWinner;
+  });
+
   useEffect(() => {
     if (!socket || !playerId) {
       navigate("/");
@@ -176,8 +181,8 @@ export default function GameRoom({ socket }) {
         );
 
         // Declare winner on blockchain
-        if (blockchainRoomId && winner.id) {
-          await handleDeclareWinner(winner.id);
+        if (blockchainRoomId && winner.id && handleDeclareWinnerRef.current) {
+          await handleDeclareWinnerRef.current(winner.id);
         }
       } else {
         setMessage(`Game ended. ${reason || ""}`);
@@ -473,9 +478,18 @@ export default function GameRoom({ socket }) {
     }
   };
 
+  // Ref to access latest handleDeclareWinner in socket callback
+  const handleDeclareWinnerRef = useRef(null);
+
   const handleDeclareWinner = async (winnerAddress) => {
     if (!blockchainRoomId) {
       console.error("No blockchain room ID found");
+      return;
+    }
+
+    // Only the creator should declare the winner on blockchain
+    if (!isCreator) {
+      console.log("Not the creator, skipping declare winner transaction");
       return;
     }
 
