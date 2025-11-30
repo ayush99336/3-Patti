@@ -82,8 +82,8 @@ io.on("connection", (socket) => {
         typeof buyInTokens === "number" && isFinite(buyInTokens)
           ? buyInTokens
           : typeof buyIn === "string"
-          ? parseFloat(buyIn)
-          : 0;
+            ? parseFloat(buyIn)
+            : 0;
       game.buyInTokens = parsedBuyInTokens > 0 ? parsedBuyInTokens : 0;
 
       // Start chips equal to room buy-in (tokens). Fallbacks avoid using wallet balance.
@@ -185,6 +185,13 @@ io.on("connection", (socket) => {
           gameState: game.getGameState(),
         });
 
+        // If game is in progress, send cards
+        if (game.gameStarted) {
+          socket.emit("yourCards", {
+            cards: game.getPlayerCards(existingPlayer.id),
+          });
+        }
+
         console.log(`${player} reconnected to room ${roomId}`);
         return;
       }
@@ -197,8 +204,8 @@ io.on("connection", (socket) => {
         typeof game.buyInTokens === "number" && game.buyInTokens > 0
           ? Math.floor(game.buyInTokens)
           : typeof buyInTokens === "number" && buyInTokens > 0
-          ? Math.floor(buyInTokens)
-          : 1000;
+            ? Math.floor(buyInTokens)
+            : 1000;
       const newPlayer = new Player(
         playerId,
         playerName,
@@ -294,6 +301,11 @@ io.on("connection", (socket) => {
     io.to(playerInfo.roomId).emit("playerSawCards", {
       playerId: player.id,
       gameState: game.getGameState(),
+    });
+
+    // Send cards to player (safety net in case they missed them)
+    socket.emit("yourCards", {
+      cards: game.getPlayerCards(player.id),
     });
   });
 

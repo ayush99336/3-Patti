@@ -186,6 +186,16 @@ export default function GameRoom({ socket }) {
     };
   }, [socket, playerId, navigate]);
 
+  // Sync showCards state with gameState
+  useEffect(() => {
+    if (gameState && playerId) {
+      const player = gameState.players.find((p) => p.id === playerId);
+      if (player && player.hasSeenCards) {
+        setShowCards(true);
+      }
+    }
+  }, [gameState, playerId]);
+
   // GSAP Animations
   useEffect(() => {
     if (gameState?.gameStarted && !startingGame) {
@@ -746,71 +756,84 @@ export default function GameRoom({ socket }) {
 
         {/* Players Overlay */}
         <div className="absolute inset-0 pointer-events-none z-30">
-          {gameState.players.map((player, index) => {
-            const position = getPlayerPosition(
-              index,
-              gameState.players.length
-            );
-            const isCurrentTurn =
-              gameState.gameStarted && gameState.currentPlayerIndex === index;
-            const isDealer = gameState.dealerIndex === index;
+          {(() => {
+            // Rotate players so current user is at index 0 (bottom)
+            const getOrderedPlayers = () => {
+              if (!gameState?.players || !playerId) return gameState?.players || [];
+              const myIndex = gameState.players.findIndex(p => p.id === playerId);
+              if (myIndex === -1) return gameState.players;
+              return [...gameState.players.slice(myIndex), ...gameState.players.slice(0, myIndex)];
+            };
+            const orderedPlayers = getOrderedPlayers();
 
-            // RESPONSIVE POSITIONING USING TAILWIND CLASSES
-            let positionClasses = "absolute pointer-events-auto transition-all duration-500";
+            return orderedPlayers.map((player, index) => {
+              const position = getPlayerPosition(
+                index,
+                orderedPlayers.length
+              );
 
-            // Hero (Bottom Center)
-            if (index === 0) {
-              positionClasses += " bottom-[5%] md:bottom-[2%] left-1/2 -translate-x-1/2";
-            }
-            // Opponent Logic for 2 Players
-            else if (gameState.players.length === 2) {
-              positionClasses += " top-[15%] right-[5%] md:right-[20%]";
-            }
-            // Standard 6-max Logic
-            else {
-              if (index === 1) positionClasses += " bottom-[25%] md:bottom-[20%] left-[2%] md:left-[10%]";
-              else if (index === 2) positionClasses += " top-[20%] left-[5%] md:left-[15%]";
-              else if (index === 3) positionClasses += " top-[10%] left-1/2 -translate-x-1/2";
-              else if (index === 4) positionClasses += " top-[20%] right-[5%] md:right-[15%]";
-              else if (index === 5) positionClasses += " bottom-[25%] md:bottom-[20%] right-[2%] md:right-[10%]";
-            }
+              // Use ID comparison for turn and dealer since we rotated the array
+              const isCurrentTurn = gameState.gameStarted &&
+                gameState.players[gameState.currentPlayerIndex]?.id === player.id;
 
-            // Logic to determine cards to pass to PlayerSeat
-            // Logic to determine cards to pass to PlayerSeat
-            let playerCards = [];
-            if (player.id === playerId) {
-              // For Hero: 
-              // 1. If we have actual cards, ALWAYS use them
-              if (myCards && myCards.length > 0) {
-                playerCards = myCards;
+              const isDealer = gameState.players[gameState.dealerIndex]?.id === player.id;
+
+              // RESPONSIVE POSITIONING USING TAILWIND CLASSES
+              let positionClasses = "absolute pointer-events-auto transition-all duration-500";
+
+              // Hero (Bottom Center)
+              if (index === 0) {
+                positionClasses += " bottom-[5%] md:bottom-[2%] left-1/2 -translate-x-1/2";
               }
-              // 2. If no cards yet (Blind), but game started & not folded, show placeholders
-              else if (gameState.gameStarted && !player.isFolded) {
-                playerCards = [{}, {}, {}]; // 3 Placeholders
+              // Opponent Logic for 2 Players
+              else if (orderedPlayers.length === 2) {
+                positionClasses += " top-[15%] right-[5%] md:right-[20%]";
               }
-            } else {
-              // For Opponents: Use 3 placeholders if game started & not folded
-              if (gameState.gameStarted && !player.isFolded) {
-                playerCards = [{}, {}, {}]; // 3 Placeholders
+              // Standard 6-max Logic
+              else {
+                if (index === 1) positionClasses += " bottom-[25%] md:bottom-[20%] left-[2%] md:left-[10%]";
+                else if (index === 2) positionClasses += " top-[20%] left-[5%] md:left-[15%]";
+                else if (index === 3) positionClasses += " top-[10%] left-1/2 -translate-x-1/2";
+                else if (index === 4) positionClasses += " top-[20%] right-[5%] md:right-[15%]";
+                else if (index === 5) positionClasses += " bottom-[25%] md:bottom-[20%] right-[2%] md:right-[10%]";
               }
-            }
 
-            // Force re-render when showCards changes for Hero
-            const shouldShowCards = player.id === playerId && showCards;
+              // Logic to determine cards to pass to PlayerSeat
+              let playerCards = [];
+              if (player.id === playerId) {
+                // For Hero: 
+                // 1. If we have actual cards, ALWAYS use them
+                if (myCards && myCards.length > 0) {
+                  playerCards = myCards;
+                }
+                // 2. If no cards yet (Blind), but game started & not folded, show placeholders
+                else if (gameState.gameStarted && !player.isFolded) {
+                  playerCards = [{}, {}, {}]; // 3 Placeholders
+                }
+              } else {
+                // For Opponents: Use 3 placeholders if game started & not folded
+                if (gameState.gameStarted && !player.isFolded) {
+                  playerCards = [{}, {}, {}]; // 3 Placeholders
+                }
+              }
 
-            return (
-              <div key={player.id} className={positionClasses} id={`player-seat-${index}`}>
-                <PlayerSeat
-                  player={player}
-                  isCurrentPlayer={isCurrentTurn}
-                  isDealer={isDealer}
-                  cards={playerCards}
-                  showCards={shouldShowCards}
-                  position={position}
-                />
-              </div>
-            );
-          })}
+              // Force re-render when showCards changes for Hero
+              const shouldShowCards = player.id === playerId && showCards;
+
+              return (
+                <div key={player.id} className={positionClasses} id={`player-seat-${index}`}>
+                  <PlayerSeat
+                    player={player}
+                    isCurrentPlayer={isCurrentTurn}
+                    isDealer={isDealer}
+                    cards={playerCards}
+                    showCards={shouldShowCards}
+                    position={position}
+                  />
+                </div>
+              );
+            });
+          })()}
         </div>
       </div>
 

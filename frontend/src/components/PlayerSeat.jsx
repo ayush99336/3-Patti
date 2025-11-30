@@ -101,7 +101,7 @@ export default function PlayerSeat({
       {cards.length > 0 && (
         <div className={cn(
           "absolute flex gap-1 z-10 transition-all duration-300",
-          isHero ? "-top-24 scale-110" : "top-8 -right-12 scale-75"
+          isHero ? "-top-32 scale-125" : "top-8 -right-12 scale-75"
         )}>
           {cards.map((card, idx) => (
             <div key={idx} className={cn("shadow-2xl", isHero && "hover:-translate-y-4 transition-transform")}>

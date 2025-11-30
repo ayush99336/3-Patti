@@ -5,7 +5,7 @@ export default function PlayingCard({ rank, suit, faceDown = false, className })
   if (faceDown) {
     return (
       <div className={cn(
-        'card relative w-14 h-20 md:w-16 md:h-24 rounded-lg shadow-xl overflow-hidden',
+        'card relative w-20 h-28 md:w-24 md:h-36 rounded-xl shadow-xl overflow-hidden',
         className
       )}>
         <img
@@ -32,25 +32,25 @@ export default function PlayingCard({ rank, suit, faceDown = false, className })
     const rankCode = rankMap[r] || r.toString().toLowerCase();
     const suitCode = suitMap[s.toLowerCase()] || s.charAt(0).toLowerCase();
 
-    return `${rankCode}${suitCode}.jpg`;
+    return `${rankCode}${suitCode}.png`;
   };
 
   const filename = getCardFilename(rank, suit);
 
   return (
     <div className={cn(
-      'card relative w-14 h-20 md:w-16 md:h-24 rounded-lg shadow-xl overflow-hidden bg-white',
+      'card relative w-20 h-28 md:w-24 md:h-36 rounded-xl shadow-xl overflow-hidden bg-white',
       className
     )}>
       <img
         src={`/cards/${filename}`}
         alt={`${rank} of ${suit}`}
-        className="w-full h-full object-contain"
+        className="w-full h-full object-cover"
         onError={(e) => {
           e.target.onerror = null;
           e.target.src = '/cards/back_of_card.jpg'; // Fallback
         }}
       />
-    </div>
+    </div >
   );
 }
