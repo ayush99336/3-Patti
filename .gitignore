@@ -47,3 +47,4 @@ coverage/
 *.swo
 *~
 .cache
+bugs.md

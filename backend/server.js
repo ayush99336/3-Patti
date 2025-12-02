@@ -82,8 +82,8 @@ io.on("connection", (socket) => {
         typeof buyInTokens === "number" && isFinite(buyInTokens)
           ? buyInTokens
           : typeof buyIn === "string"
-          ? parseFloat(buyIn)
-          : 0;
+            ? parseFloat(buyIn)
+            : 0;
       game.buyInTokens = parsedBuyInTokens > 0 ? parsedBuyInTokens : 0;
 
       // Start chips equal to room buy-in (tokens). Fallbacks avoid using wallet balance.
@@ -185,6 +185,13 @@ io.on("connection", (socket) => {
           gameState: game.getGameState(),
         });
 
+        // If game is in progress, send cards
+        if (game.gameStarted) {
+          socket.emit("yourCards", {
+            cards: game.getPlayerCards(existingPlayer.id),
+          });
+        }
+
         console.log(`${player} reconnected to room ${roomId}`);
         return;
       }
@@ -197,8 +204,8 @@ io.on("connection", (socket) => {
         typeof game.buyInTokens === "number" && game.buyInTokens > 0
           ? Math.floor(game.buyInTokens)
           : typeof buyInTokens === "number" && buyInTokens > 0
-          ? Math.floor(buyInTokens)
-          : 1000;
+            ? Math.floor(buyInTokens)
+            : 1000;
       const newPlayer = new Player(
         playerId,
         playerName,
@@ -295,6 +302,11 @@ io.on("connection", (socket) => {
       playerId: player.id,
       gameState: game.getGameState(),
     });
+
+    // Send cards to player (safety net in case they missed them)
+    socket.emit("yourCards", {
+      cards: game.getPlayerCards(player.id),
+    });
   });
 
   // Player action (bet, fold, etc.)
@@ -348,91 +360,22 @@ io.on("connection", (socket) => {
   });
 
   // Request sideshow (compare cards with previous player)
+  // Request sideshow (compare cards with previous player)
+  /*
   socket.on("requestSideshow", ({ targetPlayerId }) => {
-    const playerInfo = playerSockets.get(socket.id);
-    if (!playerInfo) return;
-
-    const game = games.get(playerInfo.roomId);
-    if (!game) return;
-
-    const requestingPlayer = game.getPlayer(playerInfo.playerId);
-    const targetPlayer = game.getPlayer(targetPlayerId);
-
-    if (!requestingPlayer || !targetPlayer) return;
-
-    if (requestingPlayer.isBlind) {
-      socket.emit("error", {
-        message: "Blind players cannot request sideshow",
-      });
-      return;
-    }
-
-    // Notify target player about sideshow request
-    const targetSocket = Array.from(playerSockets.entries()).find(
-      ([_, info]) => info.playerId === targetPlayerId
-    );
-
-    if (targetSocket) {
-      io.to(targetSocket[0]).emit("sideshowRequested", {
-        requesterId: requestingPlayer.id,
-        requesterName: requestingPlayer.name,
-      });
-    }
+     // ...
   });
+  */
 
   // Accept or reject sideshow
+  // Accept or reject sideshow
+  /*
   socket.on("sideshowResponse", ({ requesterId, accepted }) => {
-    const playerInfo = playerSockets.get(socket.id);
-    if (!playerInfo) return;
-
-    const game = games.get(playerInfo.roomId);
-    if (!game) return;
-
-    if (accepted) {
-      const player1 = game.getPlayer(playerInfo.playerId);
-      const player2 = game.getPlayer(requesterId);
-
-      if (!player1 || !player2) return;
-
-      const loser = game.compareHands(player1, player2);
-
-      if (loser) {
-        loser.fold();
-
-        io.to(playerInfo.roomId).emit("sideshowResult", {
-          winner: loser === player1 ? player2.id : player1.id,
-          loser: loser.id,
-          gameState: game.getGameState(),
-        });
-
-        // Check for game winner
-        const winner = game.checkWinner();
-        if (winner) {
-          const gameResult = game.endGame(winner);
-
-          io.to(playerInfo.roomId).emit("gameEnded", {
-            winner: {
-              id: winner.id,
-              name: winner.name,
-            },
-            pot: gameResult.pot,
-            gameState: game.getGameState(),
-          });
-        }
-      }
-    } else {
-      const requesterSocket = Array.from(playerSockets.entries()).find(
-        ([_, info]) => info.playerId === requesterId
-      );
-
-      if (requesterSocket) {
-        io.to(requesterSocket[0]).emit("sideshowRejected", {
-          playerId: playerInfo.playerId,
-        });
-      }
-    }
+    // ... (existing code)
   });
+  */
 
+  // Show cards (final reveal)
   // Show cards (final reveal)
   socket.on("show", () => {
     const playerInfo = playerSockets.get(socket.id);
@@ -443,8 +386,8 @@ io.on("connection", (socket) => {
 
     const activePlayers = game.getActivePlayers();
 
-    if (activePlayers.length < 2) {
-      socket.emit("error", { message: "Need at least 2 players for show" });
+    if (activePlayers.length !== 2) {
+      socket.emit("error", { message: "Need exactly 2 players for show" });
       return;
     }
 
@@ -460,24 +403,33 @@ io.on("connection", (socket) => {
     if (winner) {
       const gameResult = game.endGame(winner);
 
-      // Reveal all cards
+      // Reveal all cards FIRST
       const allCards = {};
       game.players.forEach((p) => {
         allCards[p.id] = game.getPlayerCards(p.id);
       });
 
-      io.to(playerInfo.roomId).emit("gameEnded", {
-        winner: {
-          id: winner.id,
-          name: winner.name,
-        },
-        pot: gameResult.pot,
+      // 1. Notify everyone that showdown is happening and reveal cards
+      io.to(playerInfo.roomId).emit("showdownStarted", {
         allCards,
-        reason: "Show",
         gameState: game.getGameState(),
       });
 
-      console.log(`Show in room ${playerInfo.roomId}. Winner: ${winner.name}`);
+      console.log(`Showdown in room ${playerInfo.roomId}. Winner: ${winner.name}`);
+
+      // 2. Wait for 4 seconds to let players see the cards
+      setTimeout(() => {
+        io.to(playerInfo.roomId).emit("gameEnded", {
+          winner: {
+            id: winner.id,
+            name: winner.name,
+          },
+          pot: gameResult.pot,
+          allCards, // Send again just in case
+          reason: "Show",
+          gameState: game.getGameState(),
+        });
+      }, 4000);
     }
   });
 

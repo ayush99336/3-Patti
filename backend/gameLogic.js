@@ -212,16 +212,83 @@ export class Game {
 
       case 'bet':
       case 'chaal':
-        const minBetAmount = player.isBlind ? this.currentBet : this.currentBet * 2;
-        const maxBetAmount = player.isBlind ? this.currentBet * 2 : this.currentBet * 4;
-        
-        if (amount < minBetAmount || amount > maxBetAmount) {
-          return { success: false, error: `Bet must be between ${minBetAmount} and ${maxBetAmount}` };
+        // Logic to determine valid bet range
+        // 1. Current Bet is always tracked in "Seen" units (effectively). 
+        //    If a Blind player bets 10, currentBet becomes 10.
+        //    If a Seen player matches, they must bet 20.
+        //    If a Seen player raises, they might bet 40.
+
+        // However, the standard usually implies:
+        // - Blind player bets X.
+        // - Next Blind player must bet X (or 2X to raise).
+        // - Next Seen player must bet 2X (to match) or 4X (to raise).
+
+        // Let's simplify:
+        // currentBet is the amount the LAST player put in.
+        // We need to know if the LAST player was Blind or Seen to normalize the "stake".
+
+        // Actually, a simpler model used in many apps:
+        // `currentBet` stores the value for a SEEN player.
+        // If a Blind player plays, they pay `currentBet / 2`.
+        // If a Seen player plays, they pay `currentBet`.
+
+        // Let's stick to the existing variable `currentBet` representing the "table stake" for a SEEN player.
+        // If the pot starts with 10 (boot), `currentBet` is 10 (Seen equivalent).
+        // Blind player pays 5. Seen player pays 10.
+
+        // BUT, the current implementation seems to store the raw amount.
+        // Let's fix it to be robust:
+
+        // "currentBet" = The amount a SEEN player must pay to call/chaal.
+        // If a Blind player is playing, they pay half of "currentBet".
+
+        // Let's refactor `startGame` to set `currentBet` = `minBet`.
+        // And `minBet` is usually the boot amount.
+        // So if boot is 10. `currentBet` = 10.
+        // Blind player pays 5? Or is boot treated as a Blind bet?
+        // Usually Boot = 1 unit. Blind = 1 unit. Seen = 2 units.
+
+        // Let's assume `currentBet` is the amount a SEEN player needs to put.
+
+        // Pot Limit Check (Standard Teen Patti Rule: 1024x Boot)
+        const POT_LIMIT = this.minBet * 1024;
+        if (this.pot >= POT_LIMIT) {
+          return { success: false, error: 'Pot limit reached. You must Show.' };
+        }
+
+        let requiredAmount = this.currentBet;
+        if (player.isBlind) {
+          requiredAmount = this.currentBet / 2;
+        }
+
+        // Allow raise (double the stake)
+        const minBet = requiredAmount;
+        const maxBet = requiredAmount * 2;
+
+        // Verify amount
+        // Allow "All-In" if chips < minBet but > 0
+        if (player.chips < minBet) {
+          if (amount !== player.chips) {
+            return { success: false, error: `You must go ShowDown or All-In with ${player.chips}` };
+          }
+          // All-in logic: Side pots would be needed for true correctness, 
+          // but for now we just let them bet what they have.
+          // We do NOT update currentBet because they couldn't match the stake.
+        } else {
+          if (amount !== minBet && amount !== maxBet) {
+            return { success: false, error: `Invalid bet amount. You must bet ${minBet} (Chaal) or ${maxBet} (Raise).` };
+          }
+
+          // Update Table Stake (currentBet) only if it's a valid raise/call
+          let newSeenStake = amount;
+          if (player.isBlind) {
+            newSeenStake = amount * 2;
+          }
+          this.currentBet = Math.max(this.currentBet, newSeenStake);
         }
 
         const betAmount = player.bet(amount);
         this.pot += betAmount;
-        this.currentBet = Math.max(this.currentBet, amount);
         this.nextPlayer();
         return { success: true };
 
@@ -237,7 +304,7 @@ export class Game {
 
   checkWinner() {
     const activePlayers = this.getActivePlayers();
-    
+
     if (activePlayers.length === 1) {
       return activePlayers[0];
     }
@@ -322,7 +389,7 @@ export class Game {
 
     this.gameStarted = false;
     this.dealerIndex = (this.dealerIndex + 1) % this.players.length;
-    
+
     return {
       winner: winner ? winner.id : null,
       pot: this.pot,
