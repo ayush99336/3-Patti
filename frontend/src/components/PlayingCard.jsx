@@ -47,6 +47,11 @@ export default function PlayingCard({ rank, suit, faceDown = false, className })
         src={cardImage}
         alt={faceDown ? 'Card back' : `${rank} of ${suit}`}
         className="w-full h-full object-cover"
+        style={{
+          imageRendering: 'high-quality', // Hint for browser to use better scaling
+          transform: 'translateZ(0)', // Force GPU layer to reduce jitter/aliasing
+          backfaceVisibility: 'hidden',
+        }}
         onError={(e) => {
           // Fallback to card back if image fails to load
           console.error(`Failed to load card image: ${cardImage}`);

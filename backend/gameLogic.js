@@ -250,6 +250,12 @@ export class Game {
 
         // Let's assume `currentBet` is the amount a SEEN player needs to put.
 
+        // Pot Limit Check (Standard Teen Patti Rule: 1024x Boot)
+        const POT_LIMIT = this.minBet * 1024;
+        if (this.pot >= POT_LIMIT) {
+          return { success: false, error: 'Pot limit reached. You must Show.' };
+        }
+
         let requiredAmount = this.currentBet;
         if (player.isBlind) {
           requiredAmount = this.currentBet / 2;
@@ -260,22 +266,26 @@ export class Game {
         const maxBet = requiredAmount * 2;
 
         // Verify amount
-        if (amount !== minBet && amount !== maxBet) {
-          return { success: false, error: `Invalid bet amount. You must bet ${minBet} (Chaal) or ${maxBet} (Raise).` };
+        // Allow "All-In" if chips < minBet but > 0
+        if (player.chips < minBet) {
+          if (amount !== player.chips) {
+            return { success: false, error: `You must go ShowDown or All-In with ${player.chips}` };
+          }
+          // All-in logic: Side pots would be needed for true correctness, 
+          // but for now we just let them bet what they have.
+          // We do NOT update currentBet because they couldn't match the stake.
+        } else {
+          if (amount !== minBet && amount !== maxBet) {
+            return { success: false, error: `Invalid bet amount. You must bet ${minBet} (Chaal) or ${maxBet} (Raise).` };
+          }
+
+          // Update Table Stake (currentBet) only if it's a valid raise/call
+          let newSeenStake = amount;
+          if (player.isBlind) {
+            newSeenStake = amount * 2;
+          }
+          this.currentBet = Math.max(this.currentBet, newSeenStake);
         }
-
-        // Update Table Stake (currentBet)
-        // If player bet `amount`, what is the new `currentBet` (Seen equivalent)?
-        // If Blind player bets 10 (Raise), it counts as 20 for a Seen player.
-        // If Seen player bets 20 (Chaal), it counts as 20.
-
-        let newSeenStake = amount;
-        if (player.isBlind) {
-          newSeenStake = amount * 2;
-        }
-
-        // Only update if it's a raise (or equal, but logic holds)
-        this.currentBet = Math.max(this.currentBet, newSeenStake);
 
         const betAmount = player.bet(amount);
         this.pot += betAmount;
