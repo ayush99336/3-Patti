@@ -117,8 +117,18 @@ export function useContracts() {
       const networkName = getNetworkName(chainId);
       const networkAddresses = addresses[networkName];
 
+      console.log('🔧 Initializing contracts:', {
+        chainId,
+        networkName,
+        hasAddresses: !!networkAddresses,
+        hasSigner: !!signer,
+        hasWalletProvider: !!walletProvider,
+        hasRpcProvider: !!rpcProvider
+      });
+
       if (!networkAddresses) {
-        console.warn(`No contract addresses found for chain ${chainId}`);
+        console.warn(`⚠️ No contract addresses found for chain ${chainId} (${networkName})`);
+        console.warn('Available networks:', Object.keys(addresses));
         return;
       }
 
@@ -135,6 +145,7 @@ export function useContracts() {
           provider
         );
         setTokenContract(token);
+        console.log('✅ Token contract initialized');
       }
 
       // Initialize game contract
@@ -145,11 +156,12 @@ export function useContracts() {
           provider
         );
         setGameContract(game);
+        console.log('✅ Game contract initialized');
       }
 
-      console.log('Contracts initialized for network:', networkName);
+      console.log('✅ Contracts initialized for network:', networkName);
     } catch (error) {
-      console.error('Error initializing contracts:', error);
+      console.error('❌ Error initializing contracts:', error);
     }
   }
 
@@ -217,7 +229,12 @@ export function useContracts() {
   }, [tokenContract]);
 
   async function approveTokens(spenderAddress, amount) {
-    if (!tokenContract || !signer) throw new Error('Contract not initialized');
+    if (!tokenContract) {
+      throw new Error('Token contract not initialized. Please connect to Base Sepolia network.');
+    }
+    if (!signer) {
+      throw new Error('Please connect your wallet to Base Sepolia to continue.');
+    }
 
     try {
       const tx = await tokenContract.approve(spenderAddress, amount);
