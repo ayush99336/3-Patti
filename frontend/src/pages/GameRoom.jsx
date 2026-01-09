@@ -1090,11 +1090,14 @@ export default function GameRoom({ socket }) {
                       <div className="winner-content-item bg-gradient-to-b from-white/10 to-transparent rounded-2xl p-6 mb-8 border border-white/10 relative overflow-hidden">
                         <p className="text-gray-400 text-xs font-bold tracking-[0.2em] uppercase mb-4 text-center">Cash Game Settlement</p>
 
-                        {/* Calculate total chips */}
+                        {/* Calculate payouts using blockchain pot */}
                         {(() => {
                           const totalChips = winnerInfo.playerChips.reduce((sum, pc) => sum + pc.chips, 0);
-                          const rake = winnerInfo.pot * 0.05; // 5% rake
-                          const distributablePot = winnerInfo.pot - rake;
+                          // Blockchain pot = number of players * buy-in (1000 TPT default)
+                          // For now we use player count * 1000 since buy-in is fixed
+                          const blockchainPot = winnerInfo.playerChips.length * 1000;
+                          const rake = blockchainPot * 0.05; // 5% rake
+                          const distributablePot = blockchainPot * 0.95;
 
                           return (
                             <>
