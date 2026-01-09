@@ -61,7 +61,7 @@ export default function Home({ socket }) {
     <div className="min-h-screen relative overflow-hidden">
       {/* Blurred Background Image */}
       <div
-        className="absolute inset-0 bg-[url(background.jpg)] bg-cover bg-center bg-no-repeat"
+        className="absolute inset-0 bg-[url('/background.jpg')] bg-cover bg-center bg-no-repeat"
         style={{ filter: "blur(8px)", transform: "scale(1.1)" }}
       ></div>
 
@@ -126,59 +126,59 @@ export default function Home({ socket }) {
           </div>
 
           <div className="font-bold text-white text-xl underline mb-5 underline-offset-4">
-              Features
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
-              <div className="group relative bg-gradient-to-br from-blue-600/20 to-blue-800/20 backdrop-blur-md rounded-2xl p-6 border border-blue-500/30 hover:border-blue-400/60 transition-all duration-300 hover:scale-105 hover:shadow-[0_0_30px_rgba(59,130,246,0.3)]">
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-400/0 to-blue-600/0 group-hover:from-blue-400/10 group-hover:to-blue-600/10 rounded-2xl transition-all duration-300"></div>
-                <div className="relative">
-                  <div className="bg-blue-500/20 w-16 h-16 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform">
-                    <Users className="w-8 h-8 text-blue-400" />
-                  </div>
-                  <h3 className="text-white font-bold text-lg mb-2">
-                    Multiplayer
-                  </h3>
-                  <p className="text-blue-200 text-sm">2-6 Players</p>
+            Features
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+            <div className="group relative bg-gradient-to-br from-blue-600/20 to-blue-800/20 backdrop-blur-md rounded-2xl p-6 border border-blue-500/30 hover:border-blue-400/60 transition-all duration-300 hover:scale-105 hover:shadow-[0_0_30px_rgba(59,130,246,0.3)]">
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-400/0 to-blue-600/0 group-hover:from-blue-400/10 group-hover:to-blue-600/10 rounded-2xl transition-all duration-300"></div>
+              <div className="relative">
+                <div className="bg-blue-500/20 w-16 h-16 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform">
+                  <Users className="w-8 h-8 text-blue-400" />
                 </div>
-              </div>
-
-              <div className="group relative bg-gradient-to-br from-yellow-600/20 to-yellow-800/20 backdrop-blur-md rounded-2xl p-6 border border-yellow-500/30 hover:border-yellow-400/60 transition-all duration-300 hover:scale-105 hover:shadow-[0_0_30px_rgba(250,204,21,0.3)]">
-                <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/0 to-yellow-600/0 group-hover:from-yellow-400/10 group-hover:to-yellow-600/10 rounded-2xl transition-all duration-300"></div>
-                <div className="relative">
-                  <div className="bg-yellow-500/20 w-16 h-16 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform">
-                    <Trophy className="w-8 h-8 text-yellow-400" />
-                  </div>
-                  <h3 className="text-white font-bold text-lg mb-2">
-                    Real-time
-                  </h3>
-                  <p className="text-yellow-200 text-sm">Live Sync</p>
-                </div>
-              </div>
-
-              <div className="group relative bg-gradient-to-br from-purple-600/20 to-purple-800/20 backdrop-blur-md rounded-2xl p-6 border border-purple-500/30 hover:border-purple-400/60 transition-all duration-300 hover:scale-105 hover:shadow-[0_0_30px_rgba(168,85,247,0.3)]">
-                <div className="absolute inset-0 bg-gradient-to-br from-purple-400/0 to-purple-600/0 group-hover:from-purple-400/10 group-hover:to-purple-600/10 rounded-2xl transition-all duration-300"></div>
-                <div className="relative">
-                  <div className="bg-purple-500/20 w-16 h-16 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform">
-                    <Zap className="w-8 h-8 text-purple-400" />
-                  </div>
-                  <h3 className="text-white font-bold text-lg mb-2">
-                    Fast Paced
-                  </h3>
-                  <p className="text-purple-200 text-sm">Quick Games</p>
-                </div>
-              </div>
-
-              <div className="group relative bg-gradient-to-br from-green-600/20 to-green-800/20 backdrop-blur-md rounded-2xl p-6 border border-green-500/30 hover:border-green-400/60 transition-all duration-300 hover:scale-105 hover:shadow-[0_0_30px_rgba(34,197,94,0.3)]">
-                <div className="absolute inset-0 bg-gradient-to-br from-green-400/0 to-green-600/0 group-hover:from-green-400/10 group-hover:to-green-600/10 rounded-2xl transition-all duration-300"></div>
-                <div className="relative">
-                  <div className="bg-green-500/20 w-16 h-16 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform">
-                    <Shield className="w-8 h-8 text-green-400" />
-                  </div>
-                  <h3 className="text-white font-bold text-lg mb-2">Secure</h3>
-                  <p className="text-green-200 text-sm">Blockchain</p>
-                </div>
+                <h3 className="text-white font-bold text-lg mb-2">
+                  Multiplayer
+                </h3>
+                <p className="text-blue-200 text-sm">2-6 Players</p>
               </div>
             </div>
+
+            <div className="group relative bg-gradient-to-br from-yellow-600/20 to-yellow-800/20 backdrop-blur-md rounded-2xl p-6 border border-yellow-500/30 hover:border-yellow-400/60 transition-all duration-300 hover:scale-105 hover:shadow-[0_0_30px_rgba(250,204,21,0.3)]">
+              <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/0 to-yellow-600/0 group-hover:from-yellow-400/10 group-hover:to-yellow-600/10 rounded-2xl transition-all duration-300"></div>
+              <div className="relative">
+                <div className="bg-yellow-500/20 w-16 h-16 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform">
+                  <Trophy className="w-8 h-8 text-yellow-400" />
+                </div>
+                <h3 className="text-white font-bold text-lg mb-2">
+                  Real-time
+                </h3>
+                <p className="text-yellow-200 text-sm">Live Sync</p>
+              </div>
+            </div>
+
+            <div className="group relative bg-gradient-to-br from-purple-600/20 to-purple-800/20 backdrop-blur-md rounded-2xl p-6 border border-purple-500/30 hover:border-purple-400/60 transition-all duration-300 hover:scale-105 hover:shadow-[0_0_30px_rgba(168,85,247,0.3)]">
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-400/0 to-purple-600/0 group-hover:from-purple-400/10 group-hover:to-purple-600/10 rounded-2xl transition-all duration-300"></div>
+              <div className="relative">
+                <div className="bg-purple-500/20 w-16 h-16 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform">
+                  <Zap className="w-8 h-8 text-purple-400" />
+                </div>
+                <h3 className="text-white font-bold text-lg mb-2">
+                  Fast Paced
+                </h3>
+                <p className="text-purple-200 text-sm">Quick Games</p>
+              </div>
+            </div>
+
+            <div className="group relative bg-gradient-to-br from-green-600/20 to-green-800/20 backdrop-blur-md rounded-2xl p-6 border border-green-500/30 hover:border-green-400/60 transition-all duration-300 hover:scale-105 hover:shadow-[0_0_30px_rgba(34,197,94,0.3)]">
+              <div className="absolute inset-0 bg-gradient-to-br from-green-400/0 to-green-600/0 group-hover:from-green-400/10 group-hover:to-green-600/10 rounded-2xl transition-all duration-300"></div>
+              <div className="relative">
+                <div className="bg-green-500/20 w-16 h-16 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform">
+                  <Shield className="w-8 h-8 text-green-400" />
+                </div>
+                <h3 className="text-white font-bold text-lg mb-2">Secure</h3>
+                <p className="text-green-200 text-sm">Blockchain</p>
+              </div>
+            </div>
+          </div>
 
           <div className="relative bg-gradient-to-br from-slate-800/40 to-slate-900/40 backdrop-blur-lg rounded-3xl border border-white/10 shadow-2xl overflow-hidden mb-8">
             {/* Decorative gradient overlay */}

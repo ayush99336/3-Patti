@@ -52,6 +52,7 @@ contract TeenPattiGame is Ownable, ReentrancyGuard, Pausable {
     event GameStarted(bytes32 indexed roomId, uint256 pot, uint256 playerCount);
     event BetPlaced(bytes32 indexed roomId, address indexed player, uint256 amount);
     event WinnerDeclared(bytes32 indexed roomId, address indexed winner, uint256 amount, uint256 rake);
+    event CashGameSettled(bytes32 indexed roomId, address[] players, uint256[] payouts, uint256 rake);
     event RoomClosed(bytes32 indexed roomId);
     event RakeFeeUpdated(uint256 newRakeFee);
     event TreasuryUpdated(address indexed newTreasury);
@@ -234,6 +235,86 @@ contract TeenPattiGame is Ownable, ReentrancyGuard, Pausable {
         }
         
         emit WinnerDeclared(_roomId, _winner, winnerAmount, rake);
+    }
+    
+    /**
+     * @dev Settle cash game with proportional payouts based on final chips
+     * @notice Only owner (backend) can call this with verified chip counts
+     */
+    function settleCashGame(
+        bytes32 _roomId,
+        address[] memory _players,
+        uint256[] memory _finalChips
+    ) external onlyOwner nonReentrant {
+        Room storage room = rooms[_roomId];
+        
+        require(room.state == GameState.ACTIVE, "Game not active");
+        require(_players.length == _finalChips.length, "Array length mismatch");
+        require(_players.length > 0, "No players provided");
+        
+        uint256 pot = room.pot;
+        require(pot > 0, "No pot to distribute");
+        
+        // Calculate total chips
+        uint256 totalChips = 0;
+        for (uint256 i = 0; i < _finalChips.length; i++) {
+            totalChips += _finalChips[i];
+        }
+        require(totalChips > 0, "Total chips must be greater than zero");
+        
+        // Validate all players are in the room
+        for (uint256 i = 0; i < _players.length; i++) {
+            require(room.hasJoined[_players[i]], "Player not in room");
+        }
+        
+        // Calculate rake
+        uint256 rake = (pot * rakeFee) / 10000;
+        uint256 distributablePot = pot - rake;
+        
+        // Calculate and distribute proportional payouts
+        uint256[] memory payouts = new uint256[](_players.length);
+        uint256 totalDistributed = 0;
+        address topPlayer = _players[0];
+        uint256 maxChips = _finalChips[0];
+        
+        for (uint256 i = 0; i < _players.length; i++) {
+            // Track player with most chips for winner field
+            if (_finalChips[i] > maxChips) {
+                maxChips = _finalChips[i];
+                topPlayer = _players[i];
+            }
+            
+            // Calculate proportional payout
+            // Use careful rounding to avoid dust
+            uint256 payout = (distributablePot * _finalChips[i]) / totalChips;
+            payouts[i] = payout;
+            totalDistributed += payout;
+            
+            // Transfer tokens to player
+            if (payout > 0) {
+                require(token.transfer(_players[i], payout), "Player transfer failed");
+            }
+        }
+        
+        // Handle any remaining dust (rounding errors) - give to player with most chips
+        uint256 dust = distributablePot - totalDistributed;
+        if (dust > 0) {
+            require(token.transfer(topPlayer, dust), "Dust transfer failed");
+        }
+        
+        // Transfer rake to treasury
+        if (rake > 0) {
+            require(token.transfer(treasury, rake), "Rake transfer failed");
+            totalRakeCollected += rake;
+        }
+        
+        // Update room state
+        room.state = GameState.FINISHED;
+        room.winner = topPlayer; // Player with most chips
+        room.finishedAt = block.timestamp;
+        room.pot = 0;
+        
+        emit CashGameSettled(_roomId, _players, payouts, rake);
     }
     
     /**

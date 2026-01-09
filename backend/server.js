@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 import cors from "cors";
 import { v4 as uuidv4 } from "uuid";
 import { Game, Player } from "./gameLogic.js";
+import settlementService from "./blockchain/settlementService.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -25,6 +26,111 @@ const playerSockets = new Map();
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok", activeGames: games.size });
+});
+
+// Settlement API endpoint
+app.post("/api/settle-game", async (req, res) => {
+  try {
+    const { roomId, playerChips, blockchainRoomId } = req.body;
+
+    // Validate inputs
+    if (!blockchainRoomId || !playerChips || !Array.isArray(playerChips)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: blockchainRoomId and playerChips'
+      });
+    }
+
+    // ✅ SECURITY: Verify against actual game state
+    if (!roomId) {
+      return res.status(400).json({
+        success: false,
+        error: 'roomId is required for verification'
+      });
+    }
+
+    const game = games.get(roomId);
+    if (!game) {
+      return res.status(404).json({
+        success: false,
+        error: 'Game not found - cannot verify chip counts'
+      });
+    }
+
+    // Get REAL chip counts from backend game state
+    const realChipCounts = game.players.map(p => ({
+      id: p.id,
+      chips: p.chips
+    }));
+
+    console.log('Verifying settlement for game:', roomId);
+    console.log('Submitted chip counts:', playerChips);
+    console.log('Real chip counts:', realChipCounts);
+
+    // Verify submitted data matches actual game state
+    if (playerChips.length !== realChipCounts.length) {
+      return res.status(400).json({
+        success: false,
+        error: 'Player count mismatch'
+      });
+    }
+
+    // Check each player's chips match
+    const isValid = playerChips.every(submitted => {
+      const real = realChipCounts.find(r => r.id === submitted.id);
+      if (!real) {
+        console.error(`Player ${submitted.id} not found in game`);
+        return false;
+      }
+      if (real.chips !== submitted.chips) {
+        console.error(`Chip mismatch for ${submitted.id}: submitted=${submitted.chips}, real=${real.chips}`);
+        return false;
+      }
+      return true;
+    });
+
+    if (!isValid) {
+      return res.status(400).json({
+        success: false,
+        error: 'Chip counts do not match game state - possible manipulation attempt'
+      });
+    }
+
+    // Verify settlement service is ready
+    if (!settlementService.isInitialized()) {
+      return res.status(503).json({
+        success: false,
+        error: 'Settlement service not initialized. Check server logs.'
+      });
+    }
+
+    // ✅ Use VERIFIED chip counts from backend game state
+    console.log(`✅ Chip counts verified - settling game ${blockchainRoomId}`);
+    const result = await settlementService.settleCashGame(blockchainRoomId, realChipCounts);
+
+    if (result.success) {
+      console.log(`✅ Game ${blockchainRoomId} settled successfully: ${result.txHash}`);
+
+      // Notify all players in the room about settlement
+      io.to(roomId).emit('gameSettled', {
+        txHash: result.txHash,
+        payouts: result.payouts,
+        blockchainRoomId
+      });
+
+      return res.json(result);
+    } else {
+      console.error(`❌ Settlement failed: ${result.error}`);
+      return res.status(400).json(result);
+    }
+
+  } catch (error) {
+    console.error('API error in /api/settle-game:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
 });
 
 io.on("connection", (socket) => {
@@ -343,6 +449,7 @@ io.on("connection", (socket) => {
           name: winner.name,
         },
         pot: gameResult.pot,
+        playerChips: gameResult.playerChips, // Include all player chip counts
         gameState: game.getGameState(),
       });
 
@@ -425,6 +532,7 @@ io.on("connection", (socket) => {
             name: winner.name,
           },
           pot: gameResult.pot,
+          playerChips: gameResult.playerChips, // Include all player chip counts
           allCards, // Send again just in case
           reason: "Show",
           gameState: game.getGameState(),
@@ -476,6 +584,7 @@ io.on("connection", (socket) => {
             name: winner.name,
           },
           pot: gameResult.pot,
+          playerChips: gameResult.playerChips, // Include all player chip counts
           reason: "Player left",
           gameState: game.getGameState(),
         });
@@ -492,6 +601,17 @@ io.on("connection", (socket) => {
 
 const PORT = process.env.PORT || 3001;
 
-httpServer.listen(PORT, () => {
-  console.log(`Teen Patti server running on port ${PORT}`);
-});
+// Initialize settlement service and start server
+(async () => {
+  console.log('\n🚀 Starting Teen Patti Server...\n');
+
+  // Initialize settlement service
+  await settlementService.initialize();
+
+  // Start HTTP server
+  httpServer.listen(PORT, () => {
+    console.log(`\n✅ Server running on port ${PORT}`);
+    console.log(`📡 WebSocket server ready`);
+    console.log(`🎮 Ready for games!\n`);
+  });
+})();
