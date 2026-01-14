@@ -34,7 +34,7 @@ export function useContracts() {
       initializeContractsWithRpc(84532);
     }
   }, [chainId, rpcProvider]);
-  
+
   // Update contract signers when signer changes (without full reinitialization)
   useEffect(() => {
     if (signer && contractAddresses && tokenContract && gameContract) {
@@ -117,8 +117,18 @@ export function useContracts() {
       const networkName = getNetworkName(chainId);
       const networkAddresses = addresses[networkName];
 
+      console.log('🔧 Initializing contracts:', {
+        chainId,
+        networkName,
+        hasAddresses: !!networkAddresses,
+        hasSigner: !!signer,
+        hasWalletProvider: !!walletProvider,
+        hasRpcProvider: !!rpcProvider
+      });
+
       if (!networkAddresses) {
-        console.warn(`No contract addresses found for chain ${chainId}`);
+        console.warn(`⚠️ No contract addresses found for chain ${chainId} (${networkName})`);
+        console.warn('Available networks:', Object.keys(addresses));
         return;
       }
 
@@ -135,6 +145,7 @@ export function useContracts() {
           provider
         );
         setTokenContract(token);
+        console.log('✅ Token contract initialized');
       }
 
       // Initialize game contract
@@ -145,11 +156,12 @@ export function useContracts() {
           provider
         );
         setGameContract(game);
+        console.log('✅ Game contract initialized');
       }
 
-      console.log('Contracts initialized for network:', networkName);
+      console.log('✅ Contracts initialized for network:', networkName);
     } catch (error) {
-      console.error('Error initializing contracts:', error);
+      console.error('❌ Error initializing contracts:', error);
     }
   }
 
@@ -164,14 +176,14 @@ export function useContracts() {
   // Token functions
   async function buyTokens(weiAmount) {
     if (!tokenContract || !signer) throw new Error('Contract not initialized');
-    
+
     try {
       console.log('Buying tokens with amount:', ethers.formatEther(weiAmount), 'ETH');
-      
+
       // Estimate gas first to catch errors early
       const gasEstimate = await tokenContract.buyTokens.estimateGas({ value: weiAmount });
       console.log('Gas estimate:', gasEstimate.toString());
-      
+
       const tx = await tokenContract.buyTokens({ value: weiAmount });
       console.log('Buy tokens tx:', tx.hash);
       const receipt = await tx.wait();
@@ -179,7 +191,7 @@ export function useContracts() {
       return { success: true, txHash: tx.hash, receipt };
     } catch (error) {
       console.error('Error buying tokens:', error);
-      
+
       let errorMessage = error.message;
       if (error.message.includes('paused')) {
         errorMessage = 'Contract is paused. Please contact support.';
@@ -188,14 +200,14 @@ export function useContracts() {
       } else if (error.message.includes('user rejected')) {
         errorMessage = 'Transaction rejected by user.';
       }
-      
+
       return { success: false, error: errorMessage };
     }
   }
 
   async function sellTokens(tokenAmount) {
     if (!tokenContract || !signer) throw new Error('Contract not initialized');
-    
+
     try {
       const tx = await tokenContract.sellTokens(tokenAmount);
       console.log('Sell tokens tx:', tx.hash);
@@ -217,8 +229,13 @@ export function useContracts() {
   }, [tokenContract]);
 
   async function approveTokens(spenderAddress, amount) {
-    if (!tokenContract || !signer) throw new Error('Contract not initialized');
-    
+    if (!tokenContract) {
+      throw new Error('Token contract not initialized. Please connect to Base Sepolia network.');
+    }
+    if (!signer) {
+      throw new Error('Please connect your wallet to Base Sepolia to continue.');
+    }
+
     try {
       const tx = await tokenContract.approve(spenderAddress, amount);
       console.log('Approve tx:', tx.hash);
@@ -242,40 +259,40 @@ export function useContracts() {
   // Game functions
   async function createRoom(buyIn, maxPlayers) {
     if (!gameContract || !signer) throw new Error('Contract not initialized');
-    
+
     try {
       // Get user's address
       const userAddress = await signer.getAddress();
-      
+
       // Check token balance
       const balance = await tokenContract.balanceOf(userAddress);
       console.log('💰 Token balance:', ethers.formatEther(balance), 'TPT');
       console.log('💵 Buy-in required:', ethers.formatEther(buyIn), 'TPT');
-      
+
       if (balance < buyIn) {
         throw new Error(`Insufficient token balance. You have ${ethers.formatEther(balance)} TPT but need ${ethers.formatEther(buyIn)} TPT`);
       }
-      
+
       // Check allowance - wait a bit for blockchain state to update
       const gameAddress = await gameContract.getAddress();
-      
+
       // Wait 2 seconds for approval to be confirmed and state to update
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
+
       const allowance = await tokenContract.allowance(userAddress, gameAddress);
       console.log('✅ Current allowance:', ethers.formatEther(allowance), 'TPT');
-      
+
       if (allowance < buyIn) {
         throw new Error(`Insufficient token allowance. Approved: ${ethers.formatEther(allowance)} TPT, Required: ${ethers.formatEther(buyIn)} TPT. Please approve tokens first.`);
       }
-      
+
       console.log('🎮 Creating room with buy-in:', ethers.formatEther(buyIn), 'TPT, max players:', maxPlayers);
-      
+
       const tx = await gameContract.createRoom(buyIn, maxPlayers);
       console.log('Create room tx:', tx.hash);
       const receipt = await tx.wait();
       console.log('Create room confirmed:', receipt);
-      
+
       // Extract roomId from event
       const event = receipt.logs.find(log => {
         try {
@@ -285,31 +302,31 @@ export function useContracts() {
           return false;
         }
       });
-      
+
       if (event) {
         const parsed = gameContract.interface.parseLog(event);
         const fullRoomId = parsed.args.roomId;
         const shortRoomId = getShortRoomId(fullRoomId);
-        
+
         console.log('✅ Room created:', {
           fullRoomId,
           shortRoomId,
           displayCode: shortRoomId.slice(2) // Remove 0x for display
         });
-        
-        return { 
-          success: true, 
-          txHash: tx.hash, 
+
+        return {
+          success: true,
+          txHash: tx.hash,
           receipt,
           roomId: fullRoomId,
           shortRoomId: shortRoomId
         };
       }
-      
+
       return { success: true, txHash: tx.hash, receipt };
     } catch (error) {
       console.error('❌ Error creating room:', error);
-      
+
       // Better error messages
       let errorMessage = error.message;
       if (error.message.includes('insufficient allowance')) {
@@ -319,18 +336,18 @@ export function useContracts() {
       } else if (error.code === 'CALL_EXCEPTION') {
         errorMessage = 'Transaction would fail. Check token balance and approval.';
       }
-      
+
       return { success: false, error: errorMessage };
     }
   }
 
   async function joinRoom(roomId) {
     if (!gameContract || !signer) throw new Error('Contract not initialized');
-    
+
     try {
       // If user enters short ID (6 chars), expand it to full bytes32
       let fullRoomId = roomId;
-      
+
       // Check if it's a short ID (less than full 66 chars including 0x)
       if (roomId.length < 66) {
         fullRoomId = expandRoomId(roomId);
@@ -339,38 +356,38 @@ export function useContracts() {
           expanded: fullRoomId
         });
       }
-      
+
       // Get room details first
       const roomDetails = await gameContract.getRoomDetails(fullRoomId);
       const buyIn = roomDetails.buyIn;
-      
+
       // Get user's address
       const userAddress = await signer.getAddress();
-      
+
       // Check token balance
       const balance = await tokenContract.balanceOf(userAddress);
       console.log('💰 Token balance:', ethers.formatEther(balance), 'TPT');
       console.log('💵 Buy-in required:', ethers.formatEther(buyIn), 'TPT');
-      
+
       if (balance < buyIn) {
         throw new Error(`Insufficient token balance. You have ${ethers.formatEther(balance)} TPT but need ${ethers.formatEther(buyIn)} TPT`);
       }
-      
+
       // Check allowance - wait a bit for blockchain state to update
       const gameAddress = await gameContract.getAddress();
-      
+
       // Wait 2 seconds for approval to be confirmed and state to update
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
+
       const allowance = await tokenContract.allowance(userAddress, gameAddress);
       console.log('✅ Current allowance:', ethers.formatEther(allowance), 'TPT');
-      
+
       if (allowance < buyIn) {
         throw new Error(`Insufficient token allowance. Approved: ${ethers.formatEther(allowance)} TPT, Required: ${ethers.formatEther(buyIn)} TPT. Please approve tokens first.`);
       }
-      
+
       console.log('🎮 Joining room:', fullRoomId);
-      
+
       const tx = await gameContract.joinRoom(fullRoomId);
       console.log('Join room tx:', tx.hash);
       const receipt = await tx.wait();
@@ -378,7 +395,7 @@ export function useContracts() {
       return { success: true, txHash: tx.hash, receipt };
     } catch (error) {
       console.error('❌ Error joining room:', error);
-      
+
       // Better error messages
       let errorMessage = error.message;
       if (error.message.includes('insufficient allowance')) {
@@ -388,14 +405,14 @@ export function useContracts() {
       } else if (error.code === 'CALL_EXCEPTION') {
         errorMessage = 'Transaction would fail. Check token balance and approval.';
       }
-      
+
       return { success: false, error: errorMessage };
     }
   }
 
   async function leaveRoom(roomId) {
     if (!gameContract || !signer) throw new Error('Contract not initialized');
-    
+
     try {
       const tx = await gameContract.leaveRoom(roomId);
       console.log('Leave room tx:', tx.hash);
@@ -412,25 +429,25 @@ export function useContracts() {
     if (!gameContract) {
       return null;
     }
-    
+
     try {
       console.log('📡 Fetching room details:', {
         roomId,
         contractAddress: await gameContract.getAddress(),
         network: await gameContract.runner?.provider?.getNetwork()
       });
-      
+
       // Get the provider and latest block to force fresh data
       const provider = gameContract.runner?.provider;
       const latestBlock = await provider.getBlockNumber();
-      
+
       console.log('🔄 Fetching from latest block:', latestBlock);
-      
+
       // Call the contract function with block tag to get fresh data
       const details = await gameContract.getRoomDetails(roomId, { blockTag: 'latest' });
-      
+
       const isEmptyRoom = details.creator === '0x0000000000000000000000000000000000000000';
-      
+
       console.log(isEmptyRoom ? '❌ Room NOT FOUND' : '✅ Room FOUND:', {
         roomId,
         creator: details.creator,
@@ -442,7 +459,7 @@ export function useContracts() {
         winner: details.winner,
         blockNumber: latestBlock
       });
-      
+
       return {
         creator: details.creator,
         buyIn: details.buyIn,
@@ -460,7 +477,7 @@ export function useContracts() {
 
   async function startGame(roomId) {
     if (!gameContract || !signer) throw new Error('Contract not initialized');
-    
+
     try {
       const tx = await gameContract.startGame(roomId);
       console.log('Start game tx:', tx.hash);
@@ -475,7 +492,7 @@ export function useContracts() {
 
   async function declareWinner(roomId, winner) {
     if (!gameContract || !signer) throw new Error('Contract not initialized');
-    
+
     try {
       const tx = await gameContract.declareWinner(roomId, winner);
       console.log('Declare winner tx:', tx.hash);
@@ -488,17 +505,52 @@ export function useContracts() {
     }
   }
 
+  async function settleCashGame(roomId, players, finalChips) {
+    if (!gameContract || !signer) throw new Error('Contract not initialized');
+
+    try {
+      console.log('💰 Settling cash game:', { roomId, players, finalChips });
+
+      const tx = await gameContract.settleCashGame(roomId, players, finalChips);
+      console.log('Settle cash game tx:', tx.hash);
+      const receipt = await tx.wait();
+      console.log('Settle cash game confirmed:', receipt);
+
+      // Parse event from receipt
+      const event = receipt.logs.find(log => {
+        try {
+          const parsed = gameContract.interface.parseLog(log);
+          return parsed.name === 'CashGameSettled';
+        } catch {
+          return false;
+        }
+      });
+
+      let payouts = [];
+      if (event) {
+        const parsed = gameContract.interface.parseLog(event);
+        payouts = parsed.args.payouts;
+        console.log('✅ Cash game settled:', { players, payouts });
+      }
+
+      return { success: true, txHash: tx.hash, receipt, payouts };
+    } catch (error) {
+      console.error('❌ Error settling cash game:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
   // Helper function to expand short room ID to full bytes32
   function expandRoomId(shortRoomId) {
     // Remove "0x" if present
     let cleanId = shortRoomId.toLowerCase().replace('0x', '');
-    
+
     // Ensure it's 6 characters
     cleanId = cleanId.padStart(6, '0');
-    
+
     // Add zeros to make it 64 characters (32 bytes)
     const fullId = '0x' + cleanId.padEnd(64, '0');
-    
+
     return fullId;
   }
 
@@ -526,6 +578,7 @@ export function useContracts() {
     getRoomDetails,
     startGame,
     declareWinner,
+    settleCashGame,
     // Helper functions
     expandRoomId,
     getShortRoomId,

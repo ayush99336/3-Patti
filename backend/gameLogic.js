@@ -184,11 +184,21 @@ export class Game {
   }
 
   nextPlayer() {
+    // Safety check: ensure there are active players
+    const activePlayers = this.getActivePlayers();
+    if (activePlayers.length <= 1) {
+      // Game should end; attempting to advance turn is a logic error
+      throw new Error(`Cannot advance turn: only ${activePlayers.length} active player(s) remain. Game should have ended.`);
+    }
+
     let count = 0;
     do {
       this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
       count++;
-      if (count > this.players.length) break;
+      if (count > this.players.length) {
+        console.error('nextPlayer: No active players found! This should not happen.');
+        throw new Error('No active non-folded players found');
+      }
     } while (this.players[this.currentPlayerIndex].isFolded);
 
     this.roundNumber++;
@@ -345,17 +355,17 @@ export class Game {
     }
 
     // Check for sequence
-    const isSequence = this.isSequence(values);
+    const sequenceResult = this.isSequence(values);
     const isFlush = suits[0] === suits[1] && suits[1] === suits[2];
 
     // Pure Sequence (Straight Flush)
-    if (isSequence && isFlush) {
-      return { rank: HAND_RANKINGS.PURE_SEQUENCE, values };
+    if (sequenceResult.isSequence && isFlush) {
+      return { rank: HAND_RANKINGS.PURE_SEQUENCE, values: sequenceResult.compareValues };
     }
 
     // Sequence (Straight)
-    if (isSequence) {
-      return { rank: HAND_RANKINGS.SEQUENCE, values };
+    if (sequenceResult.isSequence) {
+      return { rank: HAND_RANKINGS.SEQUENCE, values: sequenceResult.compareValues };
     }
 
     // Color (Flush)
@@ -363,9 +373,16 @@ export class Game {
       return { rank: HAND_RANKINGS.COLOR, values };
     }
 
-    // Pair
-    if (values[0] === values[1] || values[1] === values[2] || values[0] === values[2]) {
-      return { rank: HAND_RANKINGS.PAIR, values };
+    // Pair - properly order values for comparison (pair cards first, then kicker)
+    if (values[0] === values[1]) {
+      // Pair at top: [K, K, 2] -> keep as is
+      return { rank: HAND_RANKINGS.PAIR, values: [values[0], values[1], values[2]] };
+    } else if (values[1] === values[2]) {
+      // Pair at bottom: [K, 5, 5] -> rearrange to [5, 5, K]
+      return { rank: HAND_RANKINGS.PAIR, values: [values[1], values[2], values[0]] };
+    } else if (values[0] === values[2]) {
+      // Pair at ends: [K, 5, K] -> rearrange to [K, K, 5]
+      return { rank: HAND_RANKINGS.PAIR, values: [values[0], values[2], values[1]] };
     }
 
     // High Card
@@ -373,13 +390,23 @@ export class Game {
   }
 
   isSequence(values) {
-    // Check for A-2-3
+    // Check for A-2-3 (special case - LOWEST sequence in Teen Patti)
+    // Values are sorted descending: A=12, 3=1, 2=0
     if (values[0] === 12 && values[1] === 1 && values[2] === 0) {
-      return true;
+      // Return adjusted values to make A-2-3 compare as lowest sequence
+      // Use -1 values so it's lower than 2-3-4 (values [1,0,-1])
+      return {
+        isSequence: true,
+        compareValues: [-1, -1, -1]  // Makes it lowest for comparison
+      };
     }
 
-    // Check for regular sequence
-    return values[0] === values[1] + 1 && values[1] === values[2] + 1;
+    // Check for regular sequence (K-Q-J, Q-J-10, etc.)
+    if (values[0] === values[1] + 1 && values[1] === values[2] + 1) {
+      return { isSequence: true, compareValues: values };
+    }
+
+    return { isSequence: false, compareValues: values };
   }
 
   endGame(winner) {

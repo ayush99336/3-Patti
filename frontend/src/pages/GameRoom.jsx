@@ -26,7 +26,7 @@ export default function GameRoom({ socket }) {
   const { roomId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { startGame: blockchainStartGame, declareWinner } = useContracts();
+  const { startGame: blockchainStartGame, settleCashGame } = useContracts();
 
   const [playerId, setPlayerId] = useState(location.state?.playerId || "");
   const [playerName, setPlayerName] = useState(
@@ -78,7 +78,7 @@ export default function GameRoom({ socket }) {
 
   // Update ref on every render
   useEffect(() => {
-    handleDeclareWinnerRef.current = handleDeclareWinner;
+    handleSettleCashGameRef.current = handleSettleCashGame;
   });
 
   useEffect(() => {
@@ -164,7 +164,7 @@ export default function GameRoom({ socket }) {
       // Let's check PlayerSeat logic.
     });
 
-    socket.on("gameEnded", async ({ winner, pot, allCards, reason }) => {
+    socket.on("gameEnded", async ({ winner, pot, allCards, reason, playerChips }) => {
       setIsShowdown(false); // End showdown mode
       if (allCards) {
         // Show all cards at the end
@@ -175,18 +175,25 @@ export default function GameRoom({ socket }) {
       setGameEnded(true);
 
       if (winner) {
-        setWinnerInfo({ name: winner.name, pot, reason });
+        setWinnerInfo({ name: winner.name, pot, reason, playerChips });
         setMessage(
           `${winner.name} wins ${formatChips(pot)} chips! ${reason || ""}`
         );
 
-        // Declare winner on blockchain
-        if (blockchainRoomId && winner.id && handleDeclareWinnerRef.current) {
-          await handleDeclareWinnerRef.current(winner.id);
+        // Settle cash game on blockchain with proportional payouts
+        if (blockchainRoomId && playerChips && handleSettleCashGameRef.current) {
+          await handleSettleCashGameRef.current(playerChips);
         }
       } else {
         setMessage(`Game ended. ${reason || ""}`);
       }
+    });
+
+    // Listen for settlement confirmation from backend
+    socket.on("gameSettled", ({ txHash }) => {
+      console.log("Game settled on blockchain:", txHash);
+      setMessage(`💰 Tokens distributed! TX: ${txHash.slice(0, 10)}...`);
+      setTimeout(() => setMessage(""), 5000);
     });
 
     socket.on(
@@ -478,53 +485,77 @@ export default function GameRoom({ socket }) {
     }
   };
 
-  // Ref to access latest handleDeclareWinner in socket callback
-  const handleDeclareWinnerRef = useRef(null);
+  // Ref to access latest handleSettleCashGame in socket callback
+  const handleSettleCashGameRef = useRef(null);
 
-  const handleDeclareWinner = async (winnerAddress) => {
+  const handleSettleCashGame = async (playerChips) => {
     if (!blockchainRoomId) {
       console.error("No blockchain room ID found");
       return;
     }
 
-    // Only the creator should declare the winner on blockchain
+    // Only the creator should settle on blockchain
     if (!isCreator) {
-      console.log("Not the creator, skipping declare winner transaction");
+      console.log("Not the creator, skipping settlement transaction");
       return;
     }
 
     try {
-      setMessage("Declaring winner on blockchain...");
-      console.log("Declaring winner:", { blockchainRoomId, winnerAddress });
+      setMessage("Settling game on blockchain...");
 
-      const result = await declareWinner(blockchainRoomId, winnerAddress);
+      // Validate chip counts before settlement
+      const hasInvalidChips = playerChips.some((pc) => {
+        const chips = pc.chips;
+        return (
+          typeof chips !== "number" ||
+          !Number.isFinite(chips) ||
+          chips < 0
+        );
+      });
+
+      if (hasInvalidChips) {
+        console.error("Invalid chip amounts detected:", playerChips);
+        throw new Error("Cannot settle game: invalid chip amounts detected");
+      }
+
+      // Extract player addresses and chip amounts from playerChips array
+      const players = playerChips.map(pc => pc.id);
+      const finalChips = playerChips.map(pc => Math.floor(pc.chips));
+
+      console.log("Calling backend API:", { roomId, blockchainRoomId, playerChips });
+
+      const response = await fetch('http://localhost:3001/api/settle-game', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId, blockchainRoomId, playerChips })
+      });
+
+      const result = await response.json();
 
       if (!result.success) {
         throw new Error(
-          result.error || "Failed to declare winner on blockchain"
+          result.error || "Failed to settle game on blockchain"
         );
       }
 
-      console.log("Winner declared on blockchain:", result.txHash);
-      setMessage("Winner declared successfully! 🏆");
+      console.log("Game settled on blockchain:", result.txHash);
+      setMessage("Game settled successfully! 💰");
 
       // Refresh blockchain data immediately after transaction
       await refetchRoomDetails();
 
       setTimeout(() => setMessage(""), 3000);
     } catch (err) {
-      console.error("Error declaring winner:", err);
+      console.error("Error settling game:", err);
 
       let errorMessage = err.message;
       if (err.message.includes("user rejected")) {
         errorMessage = "Transaction rejected by user";
-      } else if (err.message.includes("Only backend")) {
-        errorMessage = "Only the backend can declare winner";
       } else if (err.message.includes("Game not active")) {
         errorMessage = "Game is not active";
       }
 
-      setMessage(`Error declaring winner: ${errorMessage}`);
+      setMessage(`Error settling game: ${errorMessage}`);
       setTimeout(() => setMessage(""), 5000);
     }
   };
@@ -1048,22 +1079,86 @@ export default function GameRoom({ socket }) {
                 {winnerInfo ? (
                   <>
                     <h2 className="winner-content-item text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-200 text-5xl font-black mb-2 tracking-tight drop-shadow-sm">
-                      WINNER!
+                      GAME OVER!
                     </h2>
                     <p className="winner-content-item text-white/90 text-2xl font-medium mb-6 tracking-wide">
-                      {winnerInfo.name}
+                      {winnerInfo.name} wins!
                     </p>
 
-                    <div className="winner-content-item bg-gradient-to-b from-white/10 to-transparent rounded-2xl p-6 mb-8 border border-white/10 relative overflow-hidden group">
-                      <div className="absolute inset-0 bg-yellow-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                      <p className="text-gray-400 text-xs font-bold tracking-[0.2em] uppercase mb-2">Total Pot Won</p>
-                      <div className="flex items-center justify-center gap-3">
-                        <Coins className="w-8 h-8 text-yellow-400" />
-                        <p className="text-yellow-100 text-4xl font-bold font-mono tracking-tight text-shadow-lg">
-                          {formatChips(winnerInfo.pot)}
-                        </p>
+                    {/* Player Payouts Table */}
+                    {winnerInfo.playerChips && winnerInfo.playerChips.length > 0 ? (
+                      <div className="winner-content-item bg-gradient-to-b from-white/10 to-transparent rounded-2xl p-6 mb-8 border border-white/10 relative overflow-hidden">
+                        <p className="text-gray-400 text-xs font-bold tracking-[0.2em] uppercase mb-4 text-center">Cash Game Settlement</p>
+
+                        {/* Calculate payouts using blockchain pot */}
+                        {(() => {
+                          const totalChips = winnerInfo.playerChips.reduce((sum, pc) => sum + pc.chips, 0);
+                          // Blockchain pot = number of players * buy-in (1000 TPT default)
+                          // For now we use player count * 1000 since buy-in is fixed
+                          const blockchainPot = winnerInfo.playerChips.length * 1000;
+                          const rake = blockchainPot * 0.05; // 5% rake
+                          const distributablePot = blockchainPot * 0.95;
+
+                          return (
+                            <>
+                              <div className="space-y-2 mb-4">
+                                {winnerInfo.playerChips
+                                  .sort((a, b) => b.chips - a.chips) // Sort by chips descending
+                                  .map((playerChip, idx) => {
+                                    const percentage = totalChips > 0 ? (playerChip.chips / totalChips * 100) : 0;
+                                    const payout = totalChips > 0 ? Math.floor(distributablePot * playerChip.chips / totalChips) : 0;
+                                    const isWinner = idx === 0; // First player after sorting has most chips
+
+                                    return (
+                                      <div
+                                        key={playerChip.id}
+                                        className={`flex items-center justify-between p-3 rounded-xl ${isWinner
+                                          ? 'bg-yellow-500/20 border border-yellow-500/30'
+                                          : 'bg-white/5 border border-white/5'
+                                          }`}
+                                      >
+                                        <div className="flex items-center gap-3">
+                                          {isWinner && <Trophy className="w-4 h-4 text-yellow-400" />}
+                                          <span className={`text-sm font-medium ${isWinner ? 'text-yellow-100' : 'text-gray-300'}`}>
+                                            {playerChip.id.slice(0, 8)}...
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                          <div className="text-right">
+                                            <div className="text-xs text-gray-400">{percentage.toFixed(1)}% • {formatChips(playerChip.chips)} chips</div>
+                                            <div className={`text-sm font-bold ${isWinner ? 'text-yellow-100' : 'text-white'}`}>
+                                              {formatChips(payout)} TPT
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                              </div>
+
+                              {/* Rake Info */}
+                              <div className="text-center pt-3 border-t border-white/10">
+                                <p className="text-xs text-gray-500">
+                                  Platform Rake: {formatChips(Math.floor(rake))} TPT (5%)
+                                </p>
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
-                    </div>
+                    ) : (
+                      /* Fallback to old display if playerChips not available */
+                      <div className="winner-content-item bg-gradient-to-b from-white/10 to-transparent rounded-2xl p-6 mb-8 border border-white/10 relative overflow-hidden group">
+                        <div className="absolute inset-0 bg-yellow-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <p className="text-gray-400 text-xs font-bold tracking-[0.2em] uppercase mb-2">Total Pot Won</p>
+                        <div className="flex items-center justify-center gap-3">
+                          <Coins className="w-8 h-8 text-yellow-400" />
+                          <p className="text-yellow-100 text-4xl font-bold font-mono tracking-tight text-shadow-lg">
+                            {formatChips(winnerInfo.pot)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     {winnerInfo.reason && (
                       <p className="winner-content-item text-gray-400 text-sm mb-8 italic">
